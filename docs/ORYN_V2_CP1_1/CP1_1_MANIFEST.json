@@ -1,0 +1,21 @@
+{
+  "checkpoint": "ORYN Studio V2 CP1.1 frontend data repair",
+  "base": "ORYN_STUDIO_V2_CP1_FULL_SOURCE_CANDIDATE_20261009.zip",
+  "status": "candidate-not-hardware-verified",
+  "modified_existing_files": [
+    "oryn/frontend/src/pages/V2Preview.tsx",
+    "oryn/frontend/src/pages/v2Preview.css"
+  ],
+  "added_files": [
+    "oryn/docs/ORYN_V2_CP1_1/README.md",
+    "oryn/tests/v2_preview/test_cp11_preview_contract.py"
+  ],
+  "file_sha256": {
+    "oryn/docs/ORYN_V2_CP1_1/README.md": "5396fe1f1f66b1731f74f080158c9d8834309066f8861ea51d3229fe2a99961c",
+    "oryn/frontend/src/pages/V2Preview.tsx": "8d5f3e7621e53f8571b6fa1d5470e1e75113e68425fd21da815a85852e64d19a",
+    "oryn/frontend/src/pages/v2Preview.css": "741c5ff0e81c39108bddc2549f3edee348ffb49448715155f5e234e64dfc3beb",
+    "oryn/tests/v2_preview/test_cp11_preview_contract.py": "6e053100dfa9d9f9b4dacd50c8f8665149e9f133f212a17362ddefbc82d3afe5"
+  },
+  "tests_passed": "31 CP1 motion + 10 CP1.1 preview static contracts; TSX transpile check",
+  "full_build": "unverified due to npm dependency installation incomplete"
+}

@@ -1,0 +1,24 @@
+{
+  "baseline": "ORYN_STUDIO_V2_CP1_4_FULL_SOURCE_GALLERY_GOLD_FIX_20261010.zip",
+  "unchanged_original_file_count": 717,
+  "changed_original_files": [
+    "modules/core/kinematics_contract.py",
+    "modules/core/pattern_manager.py"
+  ],
+  "additions": [
+    "tests/motion_contract/test_cp2e_reverse_overtravel.py",
+    "scripts/cp2e_pattern_cleaning_selftest.py",
+    "RUN_CP2E_OFFLINE_TESTS_WINDOWS.cmd",
+    "ORYN_CP2E_README_TEST_AND_RELEASE.md",
+    "CP2E_OFFLINE_MOTION_REPORT.txt"
+  ],
+  "checksums": {
+    "modules/core/kinematics_contract.py": "ec260680e2d0e1bfefda604be73a6386a857a67248cd616d2b744b643210b181",
+    "modules/core/pattern_manager.py": "c8861aeadd177613e8f5aa7371e56e74978f297ab188557f5bcabc714bba3951",
+    "tests/motion_contract/test_cp2e_reverse_overtravel.py": "04e363e1498f3d58897912fc7cae2ddb67a98d3987fa5c69fbde5204cff4058f",
+    "scripts/cp2e_pattern_cleaning_selftest.py": "92b7652cc9bda40ac09804537593b20015376ba009813cdc1c834e18b186fc4b",
+    "RUN_CP2E_OFFLINE_TESTS_WINDOWS.cmd": "dd543618d6a0f7dacf94e6703628489f10426efd14d4fc2b54cff9384da52e2f",
+    "ORYN_CP2E_README_TEST_AND_RELEASE.md": "b9064817a06523fd887a5726fa3b813a95ba3f2c6918c74a9ddf3d6d0cbba288",
+    "CP2E_OFFLINE_MOTION_REPORT.txt": "c6d7643e2901c5b30c7ef5e561602fc93cd6266801ece47af8eeed4ecc6923cb"
+  }
+}

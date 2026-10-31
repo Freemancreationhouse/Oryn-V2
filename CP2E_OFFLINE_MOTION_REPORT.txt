@@ -1,0 +1,41 @@
+ORYN CP2E | OFFLINE PATTERN + CLEANING CHECK
+==============================================================
+DOES NOT CONNECT TO MACHINE; sends ZERO motor commands.
+Original Dune standard default gear ratio: 10:1 (unchanged)
+Offline reference GRBL X/Y steps: 205 / 143.504 (not written)
+The user reports physical gear teeth 150:16 = 9.375:1.
+That discrepancy remains a LIVE HARDWARE RISK until verified.
+An ideal mathematical reversal is NOT proof of real physical return.
+
+CLEAN clear_from_in.thr: 3449 pts, 32.74 turns, rho 0.000..1.000, reverse-math PASS
+CLEAN clear_from_in_Ultra.thr: 96957 pts, 158.05 turns, rho 0.006..1.000, reverse-math PASS
+CLEAN clear_from_in_mini.thr: 10152 pts, 19.75 turns, rho 0.000..1.000, reverse-math PASS
+CLEAN clear_from_in_pro.thr: 7327 pts, 46.50 turns, rho 0.000..1.000, reverse-math PASS
+CLEAN clear_from_out.thr: 3447 pts, 32.99 turns, rho 0.001..1.000, reverse-math PASS
+CLEAN clear_from_out_Ultra.thr: 93058 pts, 160.15 turns, rho 0.000..1.000, reverse-math PASS
+CLEAN clear_from_out_mini.thr: 9946 pts, 19.75 turns, rho 0.000..1.000, reverse-math PASS
+CLEAN clear_from_out_pro.thr: 7329 pts, 46.49 turns, rho 0.000..1.000, reverse-math PASS
+CLEAN clear_sideway.thr: 4175 pts, 0.45 turns, rho 0.015..1.000, reverse-math PASS
+CLEAN clear_sideway_mini.thr: 4175 pts, 0.45 turns, rho 0.015..1.000, reverse-math PASS
+CLEAN clear_sideway_pro.thr: 8210 pts, 0.50 turns, rho 0.016..1.000, reverse-math PASS
+
+Valid paths passing math audit: 167/168
+Unsafe paths detected and blocked: 1
+Cleaning patterns checked: 11
+Mathematical reverse consistency on valid paths: PASS
+Continuity warnings: 9
+WARN: AcklingDykeDorset 6-4-2018.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: BucklandDownDorset 5-26-2018.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: Hosta.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: MilkHill 7-8-2011.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: SimpleRadiance.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: SineVsBezier2.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: SwoopyRadiance.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: WinterbourneBassett 6-1-1997.thr: large point-to-point jump; inspect pattern start/continuity
+WARN: WinterbourneStokeDown 7-18-2018.thr: large point-to-point jump; inspect pattern start/continuity
+BLOCKED: pattern-superellipse.thr:9164: rho outside 0..1 (1.005)
+
+CRITICAL: Runtime controller G-code ACK/position tests and physical return test are NOT covered.
+Do not mark long cleaning or pattern execution hardware-PASS based on this report.
+CP2E protection: missing ACK/errors halt the motion stream without resending.
+Testing a physical mechanism still requires operator observation and a safe stop.

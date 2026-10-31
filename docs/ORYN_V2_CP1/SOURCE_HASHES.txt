@@ -1,0 +1,28 @@
+SHA256 manifests (source archive / candidate)
+main.py
+  baseline: e5575db98d914bb32a3ac9cb6f0210cf033d4026e434f4e569f01b9049da6b65
+  CP1:      89b8494ea3a741c63716ef598a12d0b03b201a03e0c4636454a4e04cfcdf0668
+modules/core/pattern_manager.py
+  baseline: b2fb0fd9571f827aad9f8e80316a8dde399ae8f36a593073a2e21338fc21b7da
+  CP1:      3315a3143479a6f0ecdb1a81e2a1af5060b11687296547dbd93096460f1a37f4
+modules/connection/connection_manager.py
+  baseline: 11e44f99118c88a749ea9af4448b4a960d662e856db24d23baaae5eaa68cbdc5
+  CP1:      2a485592481a260f84d776be27f538cab9092796210cd4f939521ad857cda9a2
+frontend/src/App.tsx
+  baseline: 08aeb256a421db90f4ba3510229a9629b19cfea9904fddfacb79cfd1aa5593b9
+  CP1:      79c60ed341e1ad31e11bc660bf9dbb93f0fe45f1635872aa86ea0bc0e29c3511
+frontend/src/components/layout/Layout.tsx
+  baseline: c723e86b8847918ea1b41fe82eef4c912cd46142b26d49255537312d3e4c026e
+  CP1:      ae475ee2496ea69e73e9816cb23b33e0e7493f2d40d4696a06aec7f965cf2c4c
+modules/core/kinematics_contract.py
+  baseline: (new)
+  CP1:      aa5108a39d5d59348c729be5e5f9a2aa6856ebd82992e04790c54c68cffb144e
+frontend/src/pages/V2Preview.tsx
+  baseline: (new)
+  CP1:      77bdc50092f57c6f66a8e91c83b53a4a7b74218e85be5c5f7e8a1f94dbe19509
+frontend/src/pages/v2Preview.css
+  baseline: (new)
+  CP1:      61c55c25470a05bef018ce28b5b3b28dfdf84dec9976e6daf03974fec819555f
+tests/motion_contract/test_dune_parity.py
+  baseline: (new)
+  CP1:      63c4119efc21cd411c3b5dd2c6e993bf1ba61e6db2b88829c7475ee39589ca50
