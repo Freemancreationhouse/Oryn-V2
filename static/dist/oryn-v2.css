@@ -17,7 +17,7 @@
 @media(max-width:720px){.oryn-v2-grid{grid-template-columns:repeat(auto-fill,minmax(156px,1fr))}}
 @media(max-width:440px){.oryn-v2-grid{grid-template-columns:1fr 1fr}}
 
-/* CP1.4 — increase Gallery thumbnail contrast without changing the Dune cache. */
+/* CP1.4 — increase ORYN Gallery thumbnail contrast without changing stored artwork previews. */
 .oryn-v2-tile-art{background:radial-gradient(circle at 50% 48%,#20353e 0%,#13242d 78%);border:1px solid #364c55}
 .oryn-v2-tile-img{padding:6px;object-fit:contain;filter:drop-shadow(0 0 1px rgba(236,208,164,.75))}
 .oryn-v2-tile:hover .oryn-v2-tile-img{filter:drop-shadow(0 0 2px rgba(236,208,164,.85))}

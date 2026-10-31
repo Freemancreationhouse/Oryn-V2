@@ -101,7 +101,7 @@ function PatternArtwork({ coords, progress = 1, rotation = 0, compact = false }:
     {paths.end && <circle cx={paths.end[0]} cy={paths.end[1]} r="2.0" fill="#e98258" />}
   </svg>
 }
-// CP1.4: Original Dune Weaver cached WebPs use black, translucent strokes.
+// CP1.4: Earlier cached previews use black, translucent strokes.
 // Recolor *only the preview pixels* to the sand-gold of Pattern Studio and
 // strengthen thin anti-aliased strokes. This never changes a .thr or backend cache.
 // Preserve any cached artwork that already contains non-black colored pixels.

@@ -517,7 +517,7 @@ header [role="button"] {
   min-height: 42px;
 }
 
-/* All cards: technical chamfered panels, not soft Dune-style cards. */
+/* All cards: technical chamfered panels, not overly rounded cards. */
 [class*="bg-card"][class*="border"],
 [class*="rounded-lg"][class*="border"],
 [class*="rounded-xl"][class*="border"],
