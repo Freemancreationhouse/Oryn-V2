@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# KinetiQ Motion Autohotspot
+# ORYN Autohotspot
 #
 # Two modes:
 #   Boot mode (no args):  Scans for known WiFi with 30s retry timeout.
@@ -20,7 +20,7 @@
 set -euo pipefail
 
 HOTSPOT_CON_NAME="ORYNMotion-Hotspot"
-MODE_FILE="/tmp/dw-wifi-mode"
+MODE_FILE="/tmp/oryn-wifi-mode"
 SCAN_TIMEOUT=30
 SCAN_INTERVAL=5
 IFACE="wlan0"
@@ -168,7 +168,14 @@ boot_mode() {
 
     # Check if hotspot profile exists
     if ! nmcli con show "$HOTSPOT_CON_NAME" &>/dev/null; then
-        log "Hotspot profile '$HOTSPOT_CON_NAME' not found. Run 'kinetiq wifi setup' first."
+        log "Hotspot profile '$HOTSPOT_CON_NAME' not found. Run the ORYN Wi-Fi setup installer first."
+        echo "client" > "$MODE_FILE"
+        exit 0
+    fi
+
+    # Never interrupt an already-active home router connection at boot.
+    if [ "$(get_current_state)" = "client" ]; then
+        log "Existing router connection active; leaving WiFi untouched"
         echo "client" > "$MODE_FILE"
         exit 0
     fi

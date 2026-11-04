@@ -2143,6 +2143,8 @@ def get_status():
         "current_theta": state.current_theta,
         "current_rho": state.current_rho,
         "firmware_version": state.firmware_version,
+        "firmware_type": getattr(state, "firmware_type", None),
+        "physical_home_verified": bool(getattr(state, "position_reference_verified", False)),
         "table_type": state.table_type_override or state.table_type,
         "rho_calibrated": bool(getattr(state, 'rho_calibrated', False)),
         "rho_travel_units": getattr(state, 'rho_travel_units', None),

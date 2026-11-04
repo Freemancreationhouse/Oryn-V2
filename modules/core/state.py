@@ -93,6 +93,8 @@ class AppState:
         # Firmware info (runtime only, detected on connect, not persisted)
         self.firmware_type = None  # 'fluidnc', 'grbl', or 'unknown'
         self.firmware_version = None  # e.g., "v3.7.2"
+        self.position_reference_verified = False  # Runtime only; never inferred from GRBL MPos
+        self.controller_reported_mpos = None  # Read-only controller diagnostics
 
         # Angular homing compass reference point
         # This is the angular offset in degrees where the sensor is placed

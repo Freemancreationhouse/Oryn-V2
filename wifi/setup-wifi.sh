@@ -83,17 +83,9 @@ create_hotspot_profile() {
         sudo nmcli con delete "KinetiQMotion-Hotspot" 2>/dev/null || true
     fi
 
-    # Read app name from state.json if available
+    # Keep the customer-facing setup SSID fixed as ORYN, not a legacy
+    # app_name recovered from an older state.json.
     local ssid="$HOTSPOT_SSID"
-    local state_file="$PROJECT_DIR/state.json"
-    if [ -f "$state_file" ]; then
-        local app_name
-        app_name=$(python3 -c "import json; print(json.load(open('$state_file')).get('app_name', ''))" 2>/dev/null || true)
-        if [ -n "$app_name" ]; then
-            ssid="$app_name"
-            echo "Using app name from state.json: $ssid"
-        fi
-    fi
 
     # Create the hotspot profile (open network, no password)
     sudo nmcli con add type wifi ifname "$IFACE" mode ap con-name "$HOTSPOT_CON_NAME" \

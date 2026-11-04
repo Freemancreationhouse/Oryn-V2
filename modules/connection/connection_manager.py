@@ -198,59 +198,40 @@ def list_serial_ports():
     return available_ports
 
 def device_init(homing=True):
-    # IMPORTANT: Query machine position BEFORE reset to determine if homing is needed
-    # If machine wasn't power cycled, it retains position and we can skip homing
-    # Reset ($Bye) zeroes position counters, so we must check BEFORE reset
+    """Read-only controller initialization; never imply a verified physical home.
 
+    A serial handshake, GRBL MPos=0, or saved coordinate match cannot prove
+    actual theta/rho position.  Explicit ORYN HOME/calibration remains available
+    through the existing controller functions, but is not run on connection.
+    """
+    state.last_homing_success = None
+    state.homing_error = None
+    state.position_reference_verified = False
+    state.is_homed = False
     try:
-        if get_machine_steps():
-            logger.info(f"x_steps_per_mm: {state.x_steps_per_mm}, y_steps_per_mm: {state.y_steps_per_mm}, gear_ratio: {state.gear_ratio}")
-        else:
-            logger.fatal("Failed to get machine steps")
+        if not get_machine_steps():
+            logger.error('Controller connected but GRBL/FluidNC settings were unavailable')
             state.conn.close()
             return False
-    except Exception:
-        logger.fatal("Not GRBL firmware")
+    except Exception as exc:
+        logger.error('Controller initialization failed: %s', exc)
         state.conn.close()
         return False
 
-    # Check machine position BEFORE reset to decide if homing is needed
-    machine_x, machine_y = get_machine_position()
-    needs_homing = False
+    # A status query is read-only.  Keep the observed logical MPos distinct from
+    # saved physical calibration and the unverified physical HOME reference.
+    try:
+        reported_x, reported_y = get_machine_position()
+        state.controller_reported_mpos = (reported_x, reported_y)
+        logger.info('Reported logical controller MPos=(%s,%s); physical HOME unverified',
+                    reported_x, reported_y)
+    except Exception as exc:
+        state.controller_reported_mpos = None
+        logger.warning('Controller position query unavailable: %s', exc)
 
-    if machine_x != state.machine_x or machine_y != state.machine_y:
-        logger.info(f'Machine position mismatch - machine: ({machine_x}, {machine_y}), saved: ({state.machine_x}, {state.machine_y})')
-        needs_homing = homing
-    else:
-        logger.info('Machine position matches saved state, skipping home')
-        logger.info(f'Theta: {state.current_theta}, rho: {state.current_rho}')
-        logger.info(f'Position: ({machine_x}, {machine_y})')
-
-    # Now perform soft reset to ensure controller is in a clean state
-    # This clears any pending commands and resets position counters to 0
-    logger.info("Performing soft reset for clean controller state...")
-    perform_soft_reset_sync()
-    time.sleep(1)  # Extra stabilization after controller restart
-
-    # Reset work coordinate offsets for a clean start
-    # This ensures we're using work coordinates (G54) starting from 0
-    reset_work_coordinates()
-
-    # Home if position was mismatched (machine may have been power cycled)
-    if needs_homing:
-        logger.info("Homing required due to position mismatch...")
-        success = home()
-        if not success:
-            logger.error("Homing failed during device initialization")
-            # If sensor homing failed, close connection and return False
-            # This prevents auto-connection from completing until user takes action
-            if state.sensor_homing_failed:
-                logger.error("Sensor homing failed - closing connection. User must check sensor or switch to crash homing.")
-                state.conn.close()
-                state.conn = None
-                return False
-
-    time.sleep(2)  # Allow time for the connection to establish
+    # Do not soft-reset, write G92 offsets, save a fabricated (0,0), or
+    # automatically jog/hard-home when a device is connected via USB alone.
+    logger.info('ORYN connected for diagnostics. Physical HOME requires explicit user action.')
     return True
 
 
@@ -320,12 +301,11 @@ def connect_device(homing=True):
         # state.conn = WebSocketConnection('ws://fluidnc.local:81')
 
     if (state.conn.is_connected() if state.conn else False):
-        # Check for alarm state and unlock if needed before initializing
-        if not check_and_unlock_alarm():
-            logger.error("Failed to unlock device from alarm state")
-            # Still proceed with device_init but log the issue
-
-        device_init(homing)
+        # A connection is diagnostic/read-only.  Do not issue $X or other
+        # controller-altering commands just to detect firmware and status.
+        # The explicit ORYN HOME path retains its existing alarm handling.
+        if not device_init(False):
+            logger.error('Controller parameters unavailable; physical HOME remains unverified')
 
     # Show connected effect, then transition to configured idle effect
     if state.led_controller:
@@ -602,6 +582,15 @@ def _detect_firmware():
                                 version = parts[i + 1]
                                 break
                         break
+                    elif response_lower.startswith('[ver:'):
+                        # Standard GRBL 1.1 $I output is [VER:1.1h.20190825:...]
+                        # and does not contain the literal word 'Grbl'.
+                        match = re.search(r'\[ver:([^:]+)', response, re.I)
+                        if match:
+                            firmware_type = 'grbl'
+                            # Keep the full version token reported by the controller.
+                            version = match.group(1)
+                            break
                     elif response.lower().strip() == 'ok':
                         break
             else:
@@ -914,6 +903,9 @@ def get_machine_steps(timeout=10):
 
     settings_complete = (x_steps_per_mm is not None and y_steps_per_mm is not None)
     if settings_complete:
+        if firmware_type == 'unknown':
+            state.firmware_type = 'grbl-compatible'
+            logger.info('GRBL settings confirmed, firmware version not yet reported')
         if _steps_match(y_steps_per_mm, 180) and _steps_match(x_steps_per_mm, 256):
             state.table_type = 'kinetiq_motion_mini'
         elif _steps_match(y_steps_per_mm, 210) and _steps_match(x_steps_per_mm, 256):

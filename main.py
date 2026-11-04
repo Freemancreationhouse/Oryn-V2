@@ -194,8 +194,10 @@ async def lifespan(app: FastAPI):
 
             # If connected, perform homing in background (unless disabled)
             if state.conn and state.conn.is_connected():
-                if not state.home_on_connect:
-                    logger.info("Device connected. Home-on-connect is disabled — skipping automatic homing.")
+                unattended_opt_in = os.getenv('ORYN_ALLOW_UNATTENDED_MOTION') == '1'
+                if not unattended_opt_in or not state.home_on_connect:
+                    logger.info('Controller connected for diagnostics; automatic HOME disabled by default. '
+                                'Physical HOME must be initiated deliberately from Motion.')
                 else:
                     logger.info("Device connected, starting homing in background...")
                     state.is_homing = True
@@ -217,7 +219,8 @@ async def lifespan(app: FastAPI):
                         logger.info("Background homing cycle ended")
 
                 # After homing (or skip), check for auto_play mode
-                if state.auto_play_enabled and state.auto_play_playlist:
+                if (unattended_opt_in and state.auto_play_enabled and state.auto_play_playlist
+                        and state.last_homing_success is True):
                     logger.info(f"Homing complete, checking auto_play playlist: {state.auto_play_playlist}")
                     try:
                         playlist_exists = playlist_manager.get_playlist(state.auto_play_playlist) is not None
@@ -3166,7 +3169,11 @@ async def serial_status():
     return {
         "connected": connected,
         "port": port,
-        "preferred_port": state.preferred_port
+        "preferred_port": state.preferred_port,
+        "firmware_type": getattr(state, 'firmware_type', None),
+        "firmware_version": getattr(state, 'firmware_version', None),
+        "physical_home_verified": bool(getattr(state, 'position_reference_verified', False)),
+        "home_reported_success": getattr(state, 'last_homing_success', None),
     }
 
 @app.get("/api/preferred-port", deprecated=True, tags=["settings-deprecated"])

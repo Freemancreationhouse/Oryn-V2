@@ -51,11 +51,15 @@ def _run(cmd: list[str], timeout: int = 30) -> subprocess.CompletedProcess:
 def run_nmcli(*args: str, timeout: int = 30) -> str:
     """Run nmcli and return stdout (Linux/Raspberry Pi only)."""
     cmd = [NMCLI] + list(args)
-    logger.debug("Running nmcli: %s", " ".join(cmd))
+    safe_cmd = list(cmd)
+    for i, part in enumerate(safe_cmd[:-1]):
+        if part in ('wifi-sec.psk', '802-11-wireless-security.psk'):
+            safe_cmd[i + 1] = '[REDACTED]'
+    logger.debug("Running nmcli: %s", " ".join(safe_cmd))
     result = _run(cmd, timeout=timeout)
 
     if result.returncode != 0:
-        logger.warning("nmcli failed (rc=%s): %s", result.returncode, " ".join(cmd))
+        logger.warning("nmcli failed (rc=%s): %s", result.returncode, " ".join(safe_cmd))
         if result.stderr:
             logger.warning("  stderr: %s", result.stderr.strip())
     return result.stdout
@@ -64,11 +68,15 @@ def run_nmcli(*args: str, timeout: int = 30) -> str:
 def run_nmcli_check(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
     """Run nmcli and return CompletedProcess (Linux/Raspberry Pi only)."""
     cmd = [NMCLI] + list(args)
-    logger.debug("Running nmcli: %s", " ".join(cmd))
+    safe_cmd = list(cmd)
+    for i, part in enumerate(safe_cmd[:-1]):
+        if part in ('wifi-sec.psk', '802-11-wireless-security.psk'):
+            safe_cmd[i + 1] = '[REDACTED]'
+    logger.debug("Running nmcli: %s", " ".join(safe_cmd))
     result = _run(cmd, timeout=timeout)
 
     if result.returncode != 0:
-        logger.warning("nmcli failed (rc=%s): %s", result.returncode, " ".join(cmd))
+        logger.warning("nmcli failed (rc=%s): %s", result.returncode, " ".join(safe_cmd))
         if result.stderr:
             logger.warning("  stderr: %s", result.stderr.strip())
     return result
@@ -310,16 +318,30 @@ def get_hostname() -> str:
             return name
     except Exception:
         pass
-    return "kinetiqmotion"
+    return "oryn"
 
 
 def get_wifi_status() -> dict:
-    return {
+    status = {
         "mode": get_wifi_mode(),
         "ssid": get_current_ssid(),
         "ip": get_current_ip(),
         "hostname": get_hostname(),
+        "hotspot_configured": False,
+        "hotspot_recovery_enabled": False,
     }
+    if not IS_WINDOWS:
+        try:
+            result = run_nmcli_check('con', 'show', HOTSPOT_CON_NAME, timeout=8)
+            status['hotspot_configured'] = result.returncode == 0
+        except Exception:
+            pass
+        try:
+            result = _run(['systemctl', 'is-enabled', 'autohotspot-check.timer'], timeout=6)
+            status['hotspot_recovery_enabled'] = result.returncode == 0
+        except Exception:
+            pass
+    return status
 
 
 def scan_networks() -> list[dict]:
@@ -690,7 +712,14 @@ def save_network(ssid: str, password: str) -> dict:
             return {"success": False, "message": str(e)}
 
     try:
-        subprocess.run([NMCLI, "con", "delete", ssid], capture_output=True, text=True, timeout=10)
+        # Never delete or overwrite a live WiFi profile while the user is
+        # remotely connected.  Switching an existing profile is handled by
+        # connect_to_network(), which attempts and verifies the replacement.
+        existing = next((item for item in get_saved_connections() if item.get('ssid') == ssid), None)
+        if existing:
+            if password:
+                return {"success": False, "message": "This Wi-Fi is already saved. Use Connect to change its credentials safely."}
+            return {"success": True, "message": f"'{ssid}' is already saved. Current connection unchanged."}
         if password:
             result = run_nmcli_check(
                 "con", "add", "type", "wifi", "ifname", "wlan0",

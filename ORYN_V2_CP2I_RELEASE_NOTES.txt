@@ -1,0 +1,16 @@
+ORYN Studio V2 CP2I -- Native UI deployment integrity release
+
+Purpose: Ensure the Pi actually serves the native eight-workspace V2 UI.
+- Version stamp CP2I-NATIVE-20261101 on HTML and runtime root
+- Integrated native Motion/Calibration and System/Firmware panels
+- No embedded previous-generation UI/modal in live V2 application
+- Safe V2 frontend assembler (does not reintroduce previous-generation app)
+- scripts/verify_served_v2.py compares Pi HTTP responses to the on-disk version
+- Existing motion, GRBL, ratios (10:1), motor drivers, patterns, cleaning and LED protocols unchanged.
+- Real Pi startup and controller operation must be verified on installed hardware.
+- All legally required third-party license notices retained in source.
+
+Deployment: Copy entire source into your GitHub Desktop repository (keep .git), commit/push,
+then on Pi update ~/oryn via git pull --ff-only origin main. Stop on conflicts.
+After updating static assets run python3 scripts/verify_served_v2.py http://127.0.0.1
+Browser: hard reload http://PI_IP and verify ORYN V2 CP2I in header.

@@ -1,5 +1,5 @@
 [Unit]
-Description=KinetiQ Motion Autohotspot periodic check
+Description=ORYN Autohotspot periodic check
 After=autohotspot.service
 
 [Timer]
