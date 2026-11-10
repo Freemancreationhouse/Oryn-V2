@@ -2800,7 +2800,7 @@ async def start_rotation_calibration():
     state.rotation_calibration_start_x=float(state.machine_x)
     state.rotation_calibration_current_units=0.0
     state.rotation_calibration_active=True
-    return {"success":True,"start_x":state.rotation_calibration_start_x}
+    return {"success":True,"active":True,"current_units":0.0,"start_x":state.rotation_calibration_start_x}
 
 @app.post("/api/rotation-calibration/jog", tags=["machine-calibration"])
 async def jog_rotation_calibration(request: RotationCalibrationJogRequest):
@@ -2808,9 +2808,15 @@ async def jog_rotation_calibration(request: RotationCalibrationJogRequest):
     units=float(request.units)
     if abs(units)>25: raise HTTPException(status_code=400,detail="Jog limited to 25 controller units per click")
     speed=max(5.0,min(float(request.speed),250.0))
-    ok=await connection_manager.send_grbl_coordinates(units,0,speed,timeout=30,home=True,jog_axis="x")
-    if not ok: raise HTTPException(status_code=500,detail="Controller did not acknowledge theta/X calibration jog")
-    await connection_manager.check_idle_async(timeout=60)
+    ok=await connection_manager.send_grbl_coordinates(units,0,speed,timeout=30,home=True,jog_axis="x",calibration_single_attempt=True)
+    if not ok:
+        state.rotation_calibration_active=False
+        state.motion_position_uncertain=True
+        raise HTTPException(status_code=409,detail="Rotation jog acknowledgment missing. Session stopped; verify physical position before another move")
+    if not await connection_manager.check_idle_async(timeout=60):
+        state.rotation_calibration_active=False
+        state.motion_position_uncertain=True
+        raise HTTPException(status_code=409,detail="Rotation jog not confirmed Idle; session stopped. Do not send another move until controller position is verified")
     state.rotation_calibration_current_units=float(state.rotation_calibration_current_units or 0.0)+units
     try: await connection_manager.update_machine_position()
     except Exception: pass
@@ -2858,13 +2864,13 @@ async def start_perimeter_calibration():
     if not (state.conn and state.conn.is_connected()): raise HTTPException(status_code=400,detail="Connection not established")
     check_homing_in_progress()
     if state.current_playing_file: raise HTTPException(status_code=409,detail="Stop the current pattern first")
-    if abs(float(state.current_rho))>0.05: raise HTTPException(status_code=409,detail="HOME or move to Center first")
+    if abs(float(state.current_rho))>0.05: raise HTTPException(status_code=409,detail="Radial teaching requires logical rho near 0. Establish and verify the true physical center with the HOME procedure before starting; do not assume GRBL zero means home")
     try: await connection_manager.update_machine_position()
     except Exception as e: logger.warning(f"Calibration start position refresh failed: {e}")
     state.perimeter_calibration_start_y=float(state.machine_y)
     state.perimeter_calibration_current_units=0.0
     state.perimeter_calibration_active=True
-    return {"success":True,"start_y":state.perimeter_calibration_start_y}
+    return {"success":True,"active":True,"current_units":0.0,"start_y":state.perimeter_calibration_start_y}
 
 @app.post("/api/perimeter-calibration/jog", tags=["machine-calibration"])
 async def jog_perimeter_calibration(request: PerimeterCalibrationJogRequest):
@@ -2874,9 +2880,15 @@ async def jog_perimeter_calibration(request: PerimeterCalibrationJogRequest):
     if abs(units)>10: raise HTTPException(status_code=400,detail="Jog limited to 10 controller units per click")
     speed=max(5.0,min(float(request.speed),200.0))
     before=float(state.machine_y)
-    ok=await connection_manager.send_grbl_coordinates(0,units,speed,timeout=30,home=True)
-    if not ok: raise HTTPException(status_code=500,detail="Controller did not acknowledge calibration jog")
-    await connection_manager.check_idle_async(timeout=60)
+    ok=await connection_manager.send_grbl_coordinates(0,units,speed,timeout=30,home=True,calibration_single_attempt=True)
+    if not ok:
+        state.perimeter_calibration_active=False
+        state.motion_position_uncertain=True
+        raise HTTPException(status_code=409,detail="Calibration jog acknowledgment missing. Session stopped; verify physical position before another move")
+    if not await connection_manager.check_idle_async(timeout=60):
+        state.perimeter_calibration_active=False
+        state.motion_position_uncertain=True
+        raise HTTPException(status_code=409,detail="Radial jog not confirmed Idle; session stopped. Do not send another move until controller position is verified")
     try: await connection_manager.update_machine_position()
     except Exception: state.machine_y=before+units
     state.perimeter_calibration_current_units=abs(float(state.machine_y)-float(state.perimeter_calibration_start_y))

@@ -450,7 +450,7 @@ def parse_machine_position(response: str):
     return None
 
 
-async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False, jog_axis="y"):
+async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False, jog_axis="y", *, calibration_single_attempt=False):
     """
     Send a G-code command to FluidNC and wait for an 'ok' response.
     If no response after set timeout, returns False.
@@ -468,7 +468,7 @@ async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False, jog_axi
     logger.debug(f"Sending G-code: X{x} Y{y} at F{speed}")
 
     overall_start_time = time.time()
-    max_retries = 3
+    max_retries = 1 if calibration_single_attempt else 3
     retry_count = 0
 
     while retry_count < max_retries:

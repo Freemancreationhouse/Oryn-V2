@@ -83,3 +83,15 @@ html,body{margin:0;min-height:100%;background:#101c24;color:#e8e1d6;font-family:
 .oryn-v2-guide-explain p{margin:0 0 10px}
 .oryn-v2-guide-explain p:last-child{margin-bottom:0}
 @media(max-width:740px){.oryn-v2-guide-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* CP2L — confirmed calibration session status and visible inline errors */
+.oryn-v2-calgrid{grid-template-columns:minmax(0,1fr);max-width:860px}
+.oryn-v2-cal-state{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:14px;border-radius:10px;margin:14px 0;border:1px solid #816e58;background:#322d27;color:#f6dac0;font-size:12px}
+.oryn-v2-cal-state span{line-height:1.5}
+.oryn-v2-cal-state.active{background:#183a35;border-color:#4b9d84;color:#b7f3d5}
+.oryn-v2-cal-feedback{display:block;min-height:44px;padding:13px 15px;margin:12px 0;border-radius:9px;background:#22353d;border:1px solid #62747b;color:#e5d8c8;font-size:12px;line-height:1.55;overflow-wrap:anywhere}
+.oryn-v2-cal-feedback.ok{border-color:#4b9d84;background:#183a35;color:#bdf2da}
+.oryn-v2-cal-feedback.bad{border-color:#c77b70;background:#422d31;color:#ffcdbe;font-weight:650}
+.oryn-v2-calcard .oryn-v2-jog button:not(:disabled){border-color:#bd9674;background:#3e525a;color:#ffe6be;font-weight:700}
+.oryn-v2-calcard .oryn-v2-jog button:disabled{opacity:.45}
+.oryn-v2-calcard .oryn-v2-actionbar button:disabled{opacity:.4;cursor:not-allowed}

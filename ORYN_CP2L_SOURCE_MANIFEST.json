@@ -1,0 +1,29 @@
+{
+  "release": "CP2L-CALIBRATION-20261110",
+  "sha256_lf": {
+    "main.py": "01c70e020a28322777b0d9f1bb6495fe815e14fd3dad77c821a3186d25785e10",
+    "modules/connection/connection_manager.py": "228219d6d71796b241c53793a31c0edc2374c8f2d78e8661e42e4dfea9a7a2d9",
+    "modules/core/kinematics_contract.py": "ec260680e2d0e1bfefda604be73a6386a857a67248cd616d2b744b643210b181",
+    "modules/core/pattern_manager.py": "0792b5e0a1f33e01f2ac5b854f8d3877a84d61155d4f5ab0d40976d4aad9df1b",
+    "modules/led/magic_home_controller.py": "02e9a45ca989b90c1e6172d6f6e41f9d898f6b954f10288904b4e7b11bb7eefb",
+    "frontend/v2-native/index.html": "40becaeb7b00cf5c5af878346c8738be638900e0e334d840de2a249c533af699",
+    "frontend/v2-native/oryn-v2-live.js": "efb6f26be23f57cad51d32ad438d336bb62d8a08e0b156e4b9bdd5f174acf852",
+    "frontend/v2-native/oryn-v2.css": "aa5c218f24b75c05ed7f27ad234adea7009a7fa1322c1c228d010b48f2e4edf7",
+    "static/dist/index.html": "40becaeb7b00cf5c5af878346c8738be638900e0e334d840de2a249c533af699",
+    "static/dist/oryn-v2-live.js": "efb6f26be23f57cad51d32ad438d336bb62d8a08e0b156e4b9bdd5f174acf852",
+    "static/dist/oryn-v2.css": "aa5c218f24b75c05ed7f27ad234adea7009a7fa1322c1c228d010b48f2e4edf7",
+    "scripts/verify_served_v2.py": "2d0dd2b2094ac8718a80cb74ec6497f4805ab10c891e26c061ac010942f8ae9d",
+    "scripts/verify_pi_v2_bundle.py": "37e8c6e5794fda65cb449e4cbb0845f4e01dcf04018b6543ebab84d2eefac3d0",
+    "tests/motion_contract/test_cp2l_calibration_sessions.py": "972ba10d9d9bfd207d45b6f71dd0053755f500214273ae4064edc65c14e4a3c6",
+    "tests/motion_contract/test_cp2j_usb_firmware_wifi.py": "5c1986527fbcfc5e4c3032dfef8f19e71cce9f8e687de7850f7cc5bab854496c",
+    "tests/ui/test_cp2l_calibration_flow.cjs": "9ff421387c60bb0e8e8603edd0d568172b03e725070702850a51dec57f1e6b5c",
+    "ORYN_CP2L_CALIBRATION_FIXED_RELEASE.md": "b59ef23a6276da5ecb03847fc4780dca18bf242c39df3a67d80f97b0c3360b49"
+  },
+  "excluded_mutable_files": [
+    "settings.json",
+    "playlists.json",
+    "state.json",
+    "*.env",
+    "*.sqlite"
+  ]
+}

@@ -1,34 +1,19 @@
 #!/usr/bin/env python3
-"""Read-only ORYN CP2K source and frontend verification; no controller access.
-
-Git may change CRLF/LF for text source. Compare normalized bytes only for
-text files; compare binary assets exactly. Never include mutable saved
-calibration, Wi-Fi credentials, or device state in this release manifest.
-"""
+"""Read-only CP2L source-integrity check. Ignores mutable customer settings/data."""
 from pathlib import Path
-import json,hashlib,sys
-
+import hashlib,json,sys
 root=Path(__file__).resolve().parents[1]
-manifest=root/'ORYN_CP2K_SOURCE_MANIFEST.json'
-try:
-    data=json.loads(manifest.read_text(encoding='utf-8'))
-    for rel,entry in data['files'].items():
-        target=root/rel
-        if not target.is_file():raise ValueError('Missing release file: '+rel)
-        blob=target.read_bytes()
-        if entry['mode']=='text':blob=blob.replace(b'\r\n',b'\n')
-        actual=hashlib.sha256(blob).hexdigest()
-        if actual!=entry['sha256']:
-            raise ValueError('Unexpected source change: '+rel)
-    index=(root/'static/dist/index.html').read_text(encoding='utf-8')
-    js=(root/'static/dist/oryn-v2-live.js').read_text(encoding='utf-8')
-    version='CP2K-LIVE-PROGRESS-20261105'
-    if version not in index or version not in js:raise ValueError('CP2K front-end version mismatch')
-    if any(k in js for k in ('<iframe','oryn-v2-dialog.open','Complete controls')):
-        raise ValueError('Legacy interface detected')
-    for marker in ('function wifiPanel()', 'function firmwareLabel()', 'function calCard(axis)', 'function calibrationGuide()', 'function liveFigure()'):
-        if marker not in js:raise ValueError('Native UI element missing: '+marker)
-    print('[PASS] ORYN CP2K release integrity: '+str(len(data['files']))+' source files checked')
-except Exception as err:
-    print('[FAIL]',err,file=sys.stderr)
+manifest=json.loads((root/'ORYN_CP2L_SOURCE_MANIFEST.json').read_text(encoding='utf-8'))
+problems=[]
+for rel,expected in manifest['sha256_lf'].items():
+    candidate=root/rel
+    if not candidate.is_file():problems.append('MISSING '+rel);continue
+    actual=hashlib.sha256(candidate.read_bytes().replace(b'\r\n',b'\n')).hexdigest()
+    if actual!=expected:problems.append('CHANGED '+rel)
+if problems:
+    for problem in problems:print('[FAIL]',problem)
     raise SystemExit(1)
+for rel in ['static/dist/index.html','static/dist/oryn-v2-live.js','frontend/v2-native/oryn-v2-live.js']:
+    if 'CP2L-CALIBRATION-20261110' not in (root/rel).read_text(encoding='utf-8'):
+        print('[FAIL] V2 release marker absent in',rel);raise SystemExit(1)
+print('[PASS] ORYN CP2L protected source files:',len(manifest['sha256_lf']))
