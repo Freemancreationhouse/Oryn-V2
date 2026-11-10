@@ -8,7 +8,7 @@ from urllib.error import URLError, HTTPError
 import sys
 
 root=Path(__file__).resolve().parents[1]
-version='CP2J-SAFE-WIFI-20261104'
+version='CP2K-LIVE-PROGRESS-20261105'
 base=(sys.argv[1] if len(sys.argv)>1 else 'http://127.0.0.1').rstrip('/')
 checks={
  'index.html': ('/','oryn-v2.css?v='+version),
@@ -27,7 +27,7 @@ for name,(url,token) in checks.items():
             if token not in body: print('[FAIL] Server is serving OLD',name,'from',base);failed=True
             elif name=='oryn-v2-live.js' and any(x in body for x in ['<iframe','Complete controls','oryn-v2-dialog.open']):
                 print('[FAIL] Old embedded controls are still present');failed=True
-            elif name=='oryn-v2-live.js' and not all(marker in body for marker in ['function wifiPanel()', 'function firmwareLabel()', 'function calCard(axis)']):
+            elif name=='oryn-v2-live.js' and not all(marker in body for marker in ['function wifiPanel()', 'function firmwareLabel()', 'function calCard(axis)', 'function receiveLiveStatus(next)', 'function liveFigure()', 'function calibrationGuide()']):
                 print('[FAIL] Native Wi-Fi, firmware, or Motion controls are missing');failed=True
             else: print('[PASS] Served:',name)
     except (URLError,HTTPError,OSError) as e:
