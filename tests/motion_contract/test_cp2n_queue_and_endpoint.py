@@ -27,10 +27,10 @@ def test_endpoint_rejects_drift_and_revokes_reference():
                         motion_position_uncertain=False, stop_requested=False, last_motion_error=None)
     fn = isolate('modules/core/pattern_manager.py', '_confirm_controller_endpoint',
                  {'state': s, 'logger': logging.getLogger('cp2n-test')})
-    assert fn((14.05, 25.98), context='pattern entry')
+    assert fn((14.05, 25.98), context='pattern entry', observed_xy=(14.0, 26.0))
     assert s.position_reference_verified
     assert s.last_position_check == 'passed'
-    assert not fn((14.0, 23.0), context='pattern finish')
+    assert not fn((14.0, 23.0), context='pattern finish', observed_xy=(14.0, 26.0))
     assert not s.position_reference_verified and s.motion_position_uncertain
     assert s.stop_requested
     assert s.last_motion_error == 'controller_endpoint_mismatch'
@@ -141,17 +141,20 @@ def test_executor_previews_only_after_first_point_idle_and_blocks_next_after_fai
 
 
 def test_transient_grbl_idle_does_not_allow_premature_start():
-    # First Idle reply still carries the OLD coordinate; two new, agreeing
-    # observations are required before the next pattern may be dispatched.
-    s=SimpleNamespace(machine_x=0., machine_y=0., position_reference_verified=True,
+    s=SimpleNamespace(machine_x=7., machine_y=9., position_reference_verified=True,
                       motion_position_uncertain=False, stop_requested=False,
                       conn=SimpleNamespace(is_connected=lambda: True), last_position_check='not checked')
     class Controller:
         calls=0
         async def check_idle_async(self, timeout=8):
+            raise AssertionError('Endpoint must not call state-mutating idle checker')
+        def get_status_response(self, timeout=2):
             self.calls+=1
-            if self.calls==2: s.machine_x=7.;s.machine_y=9.
-            return True
+            if self.calls == 1: return '<Idle|MPos:0.000,0.000,0.000|FS:0,0>'
+            return '<Idle|MPos:7.000,9.000,0.000|FS:0,0>'
+        def parse_machine_position(self, reply):
+            fields=reply.split("|MPos:",1)[1].split("|",1)[0].split(",")
+            return float(fields[0]),float(fields[1])
     check=Controller()
     fn=isolate('modules/core/pattern_manager.py','_confirm_controller_endpoint',
                {'state':s,'logger':logging.getLogger('cp2n-test')})
@@ -159,8 +162,9 @@ def test_transient_grbl_idle_does_not_allow_premature_start():
                 {'state':s, 'connection_manager':check,'_confirm_controller_endpoint':fn,
                  'asyncio':asyncio,'logger':logging.getLogger('cp2n-test')})
     assert asyncio.run(run((7.,9.),context='pattern entry',timeout=4.)) is True
-    assert check.calls>=3
+    assert check.calls >= 3
     assert s.position_reference_verified and not s.motion_position_uncertain
+    assert (s.machine_x,s.machine_y)==(7.,9.)
 
 
 def test_connection_loss_blocks_controller_endpoint_and_next_pattern():
@@ -168,7 +172,7 @@ def test_connection_loss_blocks_controller_endpoint_and_next_pattern():
                       motion_position_uncertain=False, stop_requested=False,
                       conn=SimpleNamespace(is_connected=lambda: False))
     class Controller:
-        async def check_idle_async(self, timeout=8):
+        def get_status_response(self, timeout=2):
             raise AssertionError('Must not poll a disconnected controller')
     fn=isolate('modules/core/pattern_manager.py','_confirm_controller_endpoint',
                {'state':s,'logger':logging.getLogger('cp2n-test')})

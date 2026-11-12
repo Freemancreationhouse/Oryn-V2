@@ -1270,78 +1270,103 @@ def is_clear_pattern(file_path):
     return name.endswith('.thr') and name.startswith((
         'clear_from_out', 'clear_from_in', 'clear_sideway'))
 
-def _confirm_controller_endpoint(expected_xy, *, context: str, tolerance: float = 0.15, revoke: bool = True) -> bool:
-    """Check GRBL's reported controller-coordinate endpoint after a confirmed Idle.
+def _confirm_controller_endpoint(expected_xy, *, context: str, observed_xy=None,
+                                 tolerance: float = 0.15, revoke: bool = True) -> bool:
+    """Compare an INDEPENDENT fresh controller status against a commanded target.
 
-    The THR current position is updated when an individual G1 receives 'ok',
-    which only confirms *planner acceptance*.  Never infer that a motor has
-    physically reached the displayed THR point until the controller is Idle,
-    and its reported X/Y agree with the commanded coordinate frame.
-
-    This detects command-state desynchronization, not belt slips or missed
-    physical motor steps (which require an actual position sensor).
+    Never read state.machine_x/y here: those are also our commanded accumulator.
+    The caller must pass a position parsed from a transaction-locked GRBL `?`
+    status reply. An ACK merely means planner acceptance, not executed steps.
     """
     try:
-        ex, ey = (float(value) for value in expected_xy)
-        observed = (float(state.machine_x), float(state.machine_y))
         import math
-        if not all(math.isfinite(v) for v in (ex, ey, *observed)):
-            raise ValueError('Non-finite controller coordinates')
-        err_x = abs(observed[0] - ex)
-        err_y = abs(observed[1] - ey)
+        ex, ey = (float(v) for v in expected_xy)
+        if observed_xy is None:
+            raise ValueError('missing independent controller report')
+        ox, oy = (float(v) for v in observed_xy)
+        if not all(math.isfinite(v) for v in (ex, ey, ox, oy)):
+            raise ValueError('non-finite controller position')
+        err_x, err_y = abs(ox - ex), abs(oy - ey)
         if err_x <= tolerance and err_y <= tolerance:
-            logger.info('ORYN controller endpoint matched %s: Xerr %.4f Yerr %.4f', context, err_x, err_y)
+            logger.info('ORYN %s status position within tolerance: dX=%.4f dY=%.4f',
+                        context, err_x, err_y)
             state.last_position_check = 'passed'
             return True
-        reason = (f'{context}: GRBL position mismatch dX={err_x:.3f} '
-                  f'dY={err_y:.3f} controller units')
+        reason = (f'{context}: controller reported X={ox:.3f} Y={oy:.3f}; '
+                  f'commanded X={ex:.3f} Y={ey:.3f}; '
+                  f'error dX={err_x:.3f} dY={err_y:.3f}')
     except (ValueError, TypeError, OverflowError) as exc:
-        reason = f'{context}: GRBL endpoint unavailable or invalid ({exc})'
+        reason = f'{context}: independent controller position unavailable ({exc})'
     if not revoke:
-        # A GRBL 'Idle' response can be stale immediately after a planner ACK.
-        # Wait for another status/position confirmation before concluding drift.
         return False
     state.last_motion_error = 'controller_endpoint_mismatch'
     state.last_position_check = reason
     state.motion_position_uncertain = True
     state.position_reference_verified = False
     state.stop_requested = True
-    logger.error('ORYN refusing further movement; %s. HOME and verify before next pattern.', reason)
+    logger.error('ORYN position check failed; %s. HOME required before more motion.', reason)
     return False
 
 
 async def _await_confirmed_endpoint(expected_xy, *, context: str, timeout: float = 180.0) -> bool:
-    """Await two GRBL Idle/position observations, without resending ANY G-code.
+    """Verify two fresh, stable GRBL Idle positions; do not mutate command pose.
 
-    A lone Idle immediately after a buffered G1's `ok` may be transient or
-    stale.  Both controller coordinates and stable Idle must agree before
-    declaring the machine ready for the next file/cleaning pass.
+    CP2P mistakenly compared the command accumulator to itself, while the idle
+    routine overwrote it with a status result. The coordinate frame (MPos/WPos)
+    must remain the same for both samples. Status replies cannot prove actual
+    ball motion on an open-loop stepper, but can catch lost/queued G-code.
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + max(1.0, float(timeout))
+    previous = None
+    last_reason = 'no fresh GRBL Idle status containing a controller position'
     while loop.time() < deadline:
         if (state.stop_requested or not state.position_reference_verified
                 or not state.conn or not state.conn.is_connected()):
+            last_reason = 'controller disconnected, stop requested or HOME unverified'
             break
         remaining = deadline - loop.time()
-        idle = await connection_manager.check_idle_async(timeout=min(8.0, max(0.2, remaining)))
-        if idle and _confirm_controller_endpoint(expected_xy, context=context, revoke=False):
-            # Demand a second fresh observation: no status-only 'Idle' shortcut.
-            await asyncio.sleep(0.2)
-            idle_again = await connection_manager.check_idle_async(timeout=min(4.0, max(0.2, deadline-loop.time())))
-            if idle_again and _confirm_controller_endpoint(expected_xy, context=context, revoke=False):
+        response = await asyncio.to_thread(connection_manager.get_status_response,
+                                           min(2.0, max(0.1, remaining)))
+        if not response:
+            await asyncio.sleep(0.12)
+            continue
+        if response.startswith(('<Alarm|', '<Hold|', '<Door|')):
+            last_reason = f'controller not Idle ({response[:80]})'
+            break
+        if not response.startswith('<Idle|'):
+            previous = None
+            await asyncio.sleep(0.12)
+            continue
+        frame = 'MPos' if '|MPos:' in response else 'WPos' if '|WPos:' in response else None
+        observed = connection_manager.parse_machine_position(response) if frame else None
+        if observed is None:
+            last_reason = f'Idle status missing X/Y: {response[:100]}'
+            previous = None
+            await asyncio.sleep(0.12)
+            continue
+        if not _confirm_controller_endpoint(expected_xy, context=context,
+                                            observed_xy=observed, revoke=False):
+            last_reason = (f'{frame} controller X/Y={observed} differs from '
+                           f'commanded X/Y={tuple(expected_xy)}')
+            previous = None
+            await asyncio.sleep(0.15)
+            continue
+        if previous is not None:
+            old_frame, old_xy = previous
+            if old_frame == frame and all(abs(a-b) <= 0.02 for a,b in zip(old_xy, observed)):
                 state.last_position_check = 'passed'
-                logger.info('ORYN %s confirmed by two stable GRBL Idle + position observations', context)
+                logger.info('ORYN %s verified two independent stable Idle %s positions: %s',
+                            context, frame, observed)
                 return True
-        await asyncio.sleep(0.15)
-    _confirm_controller_endpoint(expected_xy, context=context)
-    # Even a matching position cannot establish completion without confirmed Idle.
+        previous = (frame, observed)
+        await asyncio.sleep(0.20)
     state.motion_position_uncertain = True
     state.position_reference_verified = False
     state.stop_requested = True
-    state.last_motion_error = getattr(state, 'last_motion_error', None) or 'endpoint_idle_unconfirmed'
-    state.last_position_check = f'{context}: controller Idle/position not confirmed (HOME required)'
-    logger.error('ORYN %s unconfirmed; no next pattern is allowed', context)
+    state.last_motion_error = 'endpoint_idle_or_position_unconfirmed'
+    state.last_position_check = f'{context}: {last_reason}; HOME required'
+    logger.error('ORYN %s unconfirmed: %s; next pattern blocked', context, last_reason)
     return False
 
 
