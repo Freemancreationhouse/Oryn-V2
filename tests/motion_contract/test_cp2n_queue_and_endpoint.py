@@ -135,9 +135,9 @@ def test_executor_previews_only_after_first_point_idle_and_blocks_next_after_fai
     assert 'data-action="next-add"' in js
     assert 'data-action="next-remove"' in js
     assert 'const nextPreviewPending=new Set()' in js
-    assert any(v in js for v in ('CP2N-POSITION-QUEUE-20261112','CP2O-HOME-ACK-SAFETY-20261112'))
+    assert any(v in js for v in ('CP2N-POSITION-QUEUE-20261112','CP2O-HOME-ACK-SAFETY-20261112','CP2P-SESSION-SAFETY-20261112'))
     assert 'function home()' in js and 'nextUpPanel()' in js
-    assert any(v in (ROOT / 'static/dist/index.html').read_text() for v in ('CP2N-POSITION-QUEUE-20261112','CP2O-HOME-ACK-SAFETY-20261112'))
+    assert any(v in (ROOT / 'static/dist/index.html').read_text() for v in ('CP2N-POSITION-QUEUE-20261112','CP2O-HOME-ACK-SAFETY-20261112','CP2P-SESSION-SAFETY-20261112'))
 
 
 def test_transient_grbl_idle_does_not_allow_premature_start():

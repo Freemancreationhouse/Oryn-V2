@@ -1,0 +1,33 @@
+{
+  "release": "CP2P-SESSION-SAFETY-20261112",
+  "product": "ORYN Studio V2 \u2014 Designed to Move, by Studio Kinematics\u2122",
+  "sha256_lf": {
+    "ORYN_CP2M_POSITION_REFERENCE_RELEASE.md": "66a0a3ba5a543cacf8b2db9e72ba6dc393b5f48093abe9c1d6abc0bb35b1de39",
+    "ORYN_CP2N_POSITION_CONTINUITY_NEXT_UP_RELEASE.md": "49d438cc7da6d156270e37decd6e24e6453d4d667ad3408f93b49a388966ac72",
+    "ORYN_CP2O_HOME_ACK_POSITION_SAFETY_RELEASE.md": "7d649e91d205062756a27389518f3b7db889b9c2d24318485ec3434b17ca0381",
+    "frontend/v2-native/index.html": "0ea7d0a07c5d576998a0460b28de901ef3a199c9dc2f9bde513280a2e1bd4e16",
+    "frontend/v2-native/oryn-v2-live.js": "78ced71fd58d3041fd96d995b34d4c7e0305434eee10b51e393965c582017b38",
+    "frontend/v2-native/oryn-v2.css": "4bbfd394db11d104d204a5e8aebca2d265374bf7416c443e2b9e5399727e1aed",
+    "main.py": "ce266f28a324f93dacbb1eb2f2853d69205b8e273fe1961adea508758c9b14c0",
+    "modules/connection/connection_manager.py": "1ebcff8bd60bc54b9c363f0e728da2fb8055ad06867d360029008690e0106579",
+    "modules/core/kinematics_contract.py": "ec260680e2d0e1bfefda604be73a6386a857a67248cd616d2b744b643210b181",
+    "modules/core/pattern_manager.py": "7dee0cae6dcabe3c29f462a52c24a790c563fd74dbc4a9e68abb8d5e4eae73a1",
+    "modules/core/state.py": "5debcf365a3d8410dbd35732e34ec5eba058b4bfc06ad1e20744e07d4bd7f7f5",
+    "modules/led/magic_home_controller.py": "02e9a45ca989b90c1e6172d6f6e41f9d898f6b954f10288904b4e7b11bb7eefb",
+    "scripts/verify_pi_v2_bundle.py": "136221564cef93e10443eb408cc696f34a919479ecf43fb3894b0b8ea9533cc2",
+    "scripts/verify_served_v2.py": "5532cccf2bb8481b4da8fd914c3ccba24e21af80803a75ebfe87621fa84304c2",
+    "static/dist/index.html": "0ea7d0a07c5d576998a0460b28de901ef3a199c9dc2f9bde513280a2e1bd4e16",
+    "static/dist/oryn-v2-live.js": "78ced71fd58d3041fd96d995b34d4c7e0305434eee10b51e393965c582017b38",
+    "static/dist/oryn-v2.css": "4bbfd394db11d104d204a5e8aebca2d265374bf7416c443e2b9e5399727e1aed",
+    "tests/motion_contract/test_cp2e_reverse_overtravel.py": "04e363e1498f3d58897912fc7cae2ddb67a98d3987fa5c69fbde5204cff4058f",
+    "tests/motion_contract/test_cp2j_usb_firmware_wifi.py": "0dd8569a7d76bcbd4d82a7005257731f3f17c11c2ca42b95a50cb679cd5c259d",
+    "tests/motion_contract/test_cp2l_calibration_sessions.py": "972ba10d9d9bfd207d45b6f71dd0053755f500214273ae4064edc65c14e4a3c6",
+    "tests/motion_contract/test_cp2m_position_reference.py": "54220a8d44f1fc1caef29fc3529b26390a53598096671d682c136411130f6458",
+    "tests/motion_contract/test_cp2n_queue_and_endpoint.py": "690ad608ea970c52903ff5828fd5173454fb2edda8963fc11f72cbce6cde2761",
+    "tests/motion_contract/test_cp2o_home_ack_and_status.py": "2cc5e3c444d013e99c2c12a48c43eb667d23bb63a56288e317ad4e27d892504f",
+    "tests/motion_contract/test_dune_parity.py": "63c4119efc21cd411c3b5dd2c6e993bf1ba61e6db2b88829c7475ee39589ca50",
+    "tests/motion_contract/test_magic_home_rgb.py": "3b5aaa3db2f5800625aa81a92d5c7435b11122a1de795197d871c193c68c496a",
+    "ORYN_CP2P_SESSION_CONFIRMATION_RELEASE.md": "4982c7539dddf073883e815be02c844ff358d8143394c2487884158154bd6dbf",
+    "tests/motion_contract/test_cp2p_session_ui.py": "b93b7cd2bfee1a23e569e58180817101e9662a5527dfcfd654b6fbc9791d936f"
+  }
+}
