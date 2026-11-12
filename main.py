@@ -13,6 +13,7 @@ from datetime import datetime
 from modules.connection import connection_manager
 from modules.core import pattern_manager
 from modules.core.pattern_manager import parse_theta_rho_file, THETA_RHO_DIR
+from modules.core.kinematics_contract import dune_coupled_delta
 from modules.core import playlist_manager
 from modules.update import update_manager
 from modules.core.state import state
@@ -2919,10 +2920,43 @@ async def start_rotation_calibration():
 @app.post("/api/rotation-calibration/jog", tags=["machine-calibration"])
 async def jog_rotation_calibration(request: RotationCalibrationJogRequest):
     if not state.rotation_calibration_active or state.rotation_calibration_start_x is None: raise HTTPException(status_code=409,detail="Start rotation calibration first")
+    if not (state.conn and state.conn.is_connected()): raise HTTPException(status_code=400,detail="Connection not established")
+    if getattr(state, 'motion_position_uncertain', False):
+        raise HTTPException(status_code=409, detail="Controller position uncertain. HOME and verify before calibration")
+    import math
     units=float(request.units)
-    if abs(units)>25: raise HTTPException(status_code=400,detail="Jog limited to 25 controller units per click")
+    if not math.isfinite(units) or not 0 < abs(units) <= 25:
+        raise HTTPException(status_code=400,detail="Jog must be nonzero and at most 25 controller units per click")
+    if not math.isfinite(float(request.speed)):
+        raise HTTPException(status_code=400,detail="Invalid jog speed")
     speed=max(5.0,min(float(request.speed),250.0))
-    ok=await connection_manager.send_grbl_coordinates(units,0,speed,timeout=30,home=True,jog_axis="x",calibration_single_attempt=True)
+    # Convert raw controller X travel to the angular delta accepted by the
+    # same kinematics function used by the pattern executor.  The zero radial
+    # delta keeps physical rho constant; the Y term counters gear coupling.
+    # Calibration is still counted exclusively in X controller units.
+    from modules.core.kinematics_contract import dune_coupled_delta
+    theta_scale=(float(state.theta_revolution_units) if
+                 state.theta_calibrated and state.theta_revolution_units else None)
+    dtheta=units * (2.0*math.pi/theta_scale if theta_scale is not None else 4.0*math.pi/100.0)
+    try:
+        motor=dune_coupled_delta(
+            dtheta, 0.0,
+            x_steps=abs(float(state.x_steps_per_mm)),
+            y_steps=abs(float(state.y_steps_per_mm)),
+            gear_ratio=abs(float(state.gear_ratio)),
+            table_type=str(getattr(state,'table_type_override',None) or state.table_type),
+            theta_revolution_units=theta_scale,
+            rho_travel_units=(float(state.rho_travel_units) if state.rho_calibrated and state.rho_travel_units else None),
+            rho_direction=float(getattr(state,'rho_direction',1.0) or 1.0),
+            coupling_enabled=str(os.getenv('ORYN_KINEMATICS','dune_weaver_coupled')).strip().lower() not in
+                ('independent','independent_theta_rho','none','off','0','false'),
+        )
+        if not math.isclose(motor.x,units,rel_tol=0,abs_tol=1e-7) or not math.isfinite(motor.y):
+            raise ValueError('calibration motor transform mismatch')
+    except (ValueError,TypeError,OverflowError,ZeroDivisionError) as exc:
+        raise HTTPException(status_code=409,detail=f"Rotation calibration transform invalid: {exc}")
+    logger.info('CP2R rotation calibration coordinated jog: X=%+.4f Ycoupling=%+.4f speed=%.2f',units,motor.y,speed)
+    ok=await connection_manager.send_grbl_coordinates(units,motor.y,speed,timeout=30,home=True,jog_axis="xy",calibration_single_attempt=True)
     if not ok:
         state.rotation_calibration_active=False
         state.motion_position_uncertain=True

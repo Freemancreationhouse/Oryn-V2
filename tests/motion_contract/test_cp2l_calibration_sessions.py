@@ -51,12 +51,14 @@ def fixture():
         perimeter_calibration_active=False,perimeter_calibration_start_y=None,
         perimeter_calibration_current_units=0.0,
         theta_revolution_units=70.0,theta_calibrated=True,
-        rho_travel_units=50.201,rho_calibrated=True,rho_direction=1.0,
+        rho_travel_units=51.504,rho_calibrated=True,rho_direction=1.0,
+        x_steps_per_mm=205.0,y_steps_per_mm=143.504,gear_ratio=10.0,
+        motion_position_uncertain=False,
         save=lambda:None,
     )
     motor=FakeMotor(s)
     ns={'state':s, 'connection_manager':motor, 'logger':logging.getLogger('cal-test'),
-        'HTTPException':HTTPException, 'RotationCalibrationJogRequest':SimpleNamespace, 'PerimeterCalibrationJogRequest':SimpleNamespace, 'check_homing_in_progress':lambda:None,
+        'HTTPException':HTTPException, 'os':__import__('os'), 'RotationCalibrationJogRequest':SimpleNamespace, 'PerimeterCalibrationJogRequest':SimpleNamespace, 'check_homing_in_progress':lambda:None,
         '_save_machine_calibration_backup':lambda:None}
     return s,motor,ns
 
@@ -72,7 +74,12 @@ def test_theta_start_jog_reverse_save_real_handler():
     asyncio.run(jog(req(.5)))
     asyncio.run(jog(req(-.2)))
     assert round(s.rotation_calibration_current_units,3)==.3
-    assert m.moves==[(.5,0,'x',30),( -.2,0,'x',30)]
+    assert len(m.moves)==2
+    assert m.moves[0][:1]==(.5,) and m.moves[0][2:] == ('xy',30)
+    assert m.moves[1][:1]==(-.2,) and m.moves[1][2:] == ('xy',30)
+    assert m.moves[0][1]==pytest.approx(.5*205/(10*143.504),abs=1e-8)
+    assert m.moves[1][1]==pytest.approx(-.2*205/(10*143.504),abs=1e-8)
+    assert s.machine_y==pytest.approx(.3*205/(10*143.504))
     assert asyncio.run(save())['theta_revolution_units']==pytest.approx(.3)
     assert not s.rotation_calibration_active and s.theta_calibrated
 

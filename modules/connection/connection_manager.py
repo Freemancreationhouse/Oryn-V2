@@ -493,7 +493,12 @@ async def send_grbl_coordinates(x, y, speed=600, timeout=30, home=False, jog_axi
 
         try:
             if home:
-                if str(jog_axis).lower() == 'x':
+                if str(jog_axis).lower() == 'xy':
+                    # CP2R: one coordinated GRBL jog, with X and mechanical Y
+                    # coupling in the SAME planner move (never two separate jogs).
+                    # Preserve legacy single-axis jog contracts below.
+                    gcode = f"$J=G91 G21 X{x:.3f} Y{y:.3f} F{speed}"
+                elif str(jog_axis).lower() == 'x':
                     gcode = f"$J=G91 G21 X{x:.3f} F{speed}"
                 else:
                     gcode = f"$J=G91 G21 Y{y:.3f} F{speed}"
