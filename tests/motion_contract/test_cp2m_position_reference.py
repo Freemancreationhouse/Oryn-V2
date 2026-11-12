@@ -144,6 +144,6 @@ def test_new_native_controls_not_old_embed_and_version_synchronized():
     assert 'data-action="move-perimeter"' in js and 'data-action="move-center"' in js
     for token in ['confirm-home','/api/motion/confirm-home','/move_to_center','/move_to_perimeter','physical_home_verified']:
         assert token in js
-    assert 'CP2M-REFERENCE-20261111' in html
-    assert 'CP2M-REFERENCE-20261111' in js
+    assert any(v in html for v in ('CP2M-REFERENCE-20261111','CP2N-POSITION-QUEUE-20261112','CP2O-HOME-ACK-SAFETY-20261112'))
+    assert any(v in js for v in ('CP2M-REFERENCE-20261111','CP2N-POSITION-QUEUE-20261112','CP2O-HOME-ACK-SAFETY-20261112'))
     assert 'legacy.html' not in html

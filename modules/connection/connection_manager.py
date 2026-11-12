@@ -398,29 +398,43 @@ def check_and_unlock_alarm():
         logger.error(f"Error checking/unlocking alarm: {e}")
         return False
 
-def get_status_response() -> str:
-    """
-    Send a status query ('?') and return the response if available.
-    Accepts both MPos (machine position) and WPos (work position) formats
-    depending on GRBL's $10 setting.
-    """
-    if state.conn is None or not state.conn.is_connected():
-        logger.warning("Cannot get status response: no active connection")
-        return False
+def get_status_response(timeout: float = 3.0) -> str:
+    """Read exactly one fresh GRBL status under the shared transaction lock.
 
-    while True:
-        try:
-            state.conn.send('?')
-            response = state.conn.readline()
-            # Accept either MPos or WPos format (depends on GRBL $10 setting)
-            if "MPos" in response or "WPos" in response:
-                logger.debug(f"Status response: {response}")
-                return response
-        except Exception as e:
-            logger.error(f"Error getting status response: {e}")
-            return False
-        time.sleep(1)
-        
+    The old implementation sent `?` and released the lock before reading. A
+    concurrent pattern G1 could then have its *own* `ok` consumed by the status
+    reader, making motion ACKs uncertain and physical reference unreliable.
+    A bounded, indivisible query is essential for status and serial streaming.
+    """
+    import contextlib
+    conn = state.conn
+    if conn is None or not conn.is_connected():
+        logger.warning('Cannot get status response: no active connection')
+        return ''
+    deadline = time.monotonic() + max(0.05, float(timeout))
+    lock = getattr(conn, 'lock', None)
+    ctx = lock if lock is not None else contextlib.nullcontext()
+    try:
+        with ctx:
+            conn.send('?')  # GRBL realtime status query, no newline.
+            while time.monotonic() < deadline:
+                response = conn.readline()
+                if response:
+                    response = str(response).strip()
+                    if (response.startswith('<') and response.endswith('>')
+                            and ('MPos:' in response or 'WPos:' in response)):
+                        return response
+                    if 'ALARM:' in response or response.lower().startswith('error:'):
+                        logger.warning('Controller returned %s while querying status', response)
+                        return ''
+                else:
+                    time.sleep(0.01)
+    except Exception as exc:
+        logger.error('Error reading controller status: %s', exc)
+    logger.warning('Controller did not provide a fresh status within %.2fs', timeout)
+    return ''
+
+
 def parse_machine_position(response: str):
     """
     Parse the position from a status response.
@@ -983,23 +997,123 @@ def _load_installed_machine_profile():
 
 
 def _send_crash_home_jog_once(travel_units, feed, rho_direction=1.0):
-    """Send exactly ONE sensorless radial HOME jog.
+    """Perform ONE explicit sensorless HOME jog, but never trust a premature Idle.
 
-    Do not use send_grbl_coordinates(home=True) here: that helper waits for an
-    `ok` and can retry a relative jog if another reader consumes the response.
-    A crash-home command must never be duplicated.  The background/status path
-    is used only to observe Idle after this single command.
+    GRBL `ok` only acknowledges acceptance. After that we must observe the
+    nominal travel time, the commanded position delta, and two stable Idle
+    observations. This checks GRBL's *reported* movement, not the physical ball:
+    without a sensor an operator must still visually confirm true center.
+
+    The jog is never resent after a missing ACK. Any uncertainty revokes HOME.
     """
-    try:
-        direction = 1.0 if float(rho_direction or 1.0) >= 0 else -1.0
-        y_delta = -abs(float(travel_units)) * direction
-        gcode = f"$J=G91 G21 Y{y_delta:.5f} F{float(feed):.3f}"
-        state.conn.send(gcode + "\n")
-        logger.info(f"Sent single crash-home jog: {gcode}")
-        return True
-    except Exception as exc:
-        logger.error(f"Failed to send crash-home jog: {exc}")
+    import contextlib
+    import math
+    conn = state.conn
+    state.homing_error = None
+    state.last_homing_success = False
+    state.position_reference_verified = False
+    if not conn or not conn.is_connected():
+        state.homing_error = 'home_controller_disconnected'
         return False
+
+    try:
+        travel = abs(float(travel_units))
+        speed = float(feed)
+        direction = 1.0 if float(rho_direction or 1.0) >= 0 else -1.0
+        if not (math.isfinite(travel) and math.isfinite(speed) and
+                0.1 <= travel <= 10000 and 0.1 <= speed <= 10000):
+            raise ValueError('unsafe crash-home distance or feed')
+        dy = -travel * direction
+        gcode = f'$J=G91 G21 Y{dy:.5f} F{speed:.3f}'
+        nominal_seconds = (travel / speed) * 60.0
+        deadline_seconds = max(20.0, nominal_seconds * 2.0 + 15.0)
+        lock = getattr(conn, 'lock', None)
+        ctx = lock if lock is not None else contextlib.nullcontext()
+        with ctx:
+            starting = get_status_response(timeout=3.0)
+            if not starting or not starting.startswith('<Idle|'):
+                raise RuntimeError('Controller is not confirmed Idle before HOME')
+            pos = parse_machine_position(starting)
+            if pos is None:
+                raise RuntimeError('No controller position before HOME')
+            y_before = float(pos[1])
+
+            conn.send(gcode + '\n')
+            logger.info('HOME jog sent once: %s; expected duration >= %.2fs',
+                        gcode, nominal_seconds)
+            ack_deadline = time.monotonic() + 5.0
+            accepted = False
+            while time.monotonic() < ack_deadline:
+                line = str(conn.readline() or '').strip()
+                if line.lower() == 'ok':
+                    accepted = True
+                    break
+                if line.lower().startswith('error:') or 'ALARM:' in line.upper():
+                    raise RuntimeError('Controller rejected HOME jog: ' + line)
+                if not line:
+                    time.sleep(0.01)
+            if not accepted:
+                raise RuntimeError('HOME jog acknowledgement unknown; command NOT resent')
+
+            began = time.monotonic()
+            total_deadline = began + deadline_seconds
+            moving_seen = False
+            while time.monotonic() < total_deadline:
+                if getattr(state, 'stop_requested', False):
+                    raise RuntimeError('HOME interrupted')
+                reply = get_status_response(timeout=3.0)
+                if not reply:
+                    continue
+                mode = reply[1:].split('|', 1)[0].split(':',1)[0]
+                if mode in ('Alarm', 'Hold', 'Door', 'Sleep', 'Check'):
+                    raise RuntimeError('Unsafe controller state during HOME: ' + mode)
+                if mode in ('Jog','Run'):
+                    moving_seen = True
+                actual = parse_machine_position(reply)
+                elapsed = time.monotonic() - began
+                if mode == 'Idle' and actual is not None:
+                    measured = float(actual[1]) - y_before
+                    tol = max(0.20, travel * 0.015)
+                    if (elapsed >= nominal_seconds * 0.90
+                            and abs(measured - dy) <= tol
+                            and (moving_seen or elapsed >= nominal_seconds)):
+                        # A second, later status is mandatory: one Idle may be
+                        # a stale sample immediately after a planner ACK.
+                        time.sleep(0.2)
+                        again = get_status_response(timeout=3.0)
+                        end = parse_machine_position(again) if again else None
+                        if (again.startswith('<Idle|') and end is not None
+                                and abs((float(end[1]) - y_before) - dy) <= tol):
+                            logger.info('HOME controller jog confirmed: Y %.3f -> %.3f in %.2fs; '
+                                        'physical center still requires operator verification',
+                                        y_before, end[1], elapsed)
+                            return True
+                    if elapsed >= max(4.0, nominal_seconds * 1.10):
+                        raise RuntimeError('HOME Idle but controller travel incomplete: '
+                                           f'Y delta {measured:.3f}, expected {dy:.3f}')
+                time.sleep(0.12)
+            raise RuntimeError('HOME jog timed out without confirmed travel and Idle')
+    except Exception as exc:
+        reason = str(exc).lower()
+        if 'travel incomplete' in reason:
+            state.homing_error = 'home_travel_incomplete'
+        elif 'acknowledgement unknown' in reason:
+            state.homing_error = 'home_ack_unknown'
+        elif 'not confirmed idle' in reason:
+            state.homing_error = 'home_controller_not_idle'
+        else:
+            state.homing_error = 'home_jog_unconfirmed'
+        state.motion_position_uncertain = True
+        state.position_reference_verified = False
+        logger.error('HOME NOT VERIFIED: %s', exc)
+        # Do not auto-retry: the first jog could still be executing.
+        try:
+            if conn and conn.is_connected():
+                conn.send('!')  # realtime hold, not another movement
+        except Exception:
+            pass
+        return False
+
 
 def home(timeout=120):
     """
@@ -1258,14 +1372,12 @@ def home(timeout=120):
                             logger.error("Crash homing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
-                        state.machine_y -= calibrated_crash_travel
                     else:
                         result = _send_crash_home_jog_once(calibrated_crash_travel, crash_homing_speed, homing_rho_direction)
                         if not result:
                             logger.error("Crash homing failed - send_grbl_coordinates returned False")
                             homing_complete.set()
                             return
-                        state.machine_y -= calibrated_crash_travel
                 finally:
                     loop.close()
 
@@ -1337,30 +1449,21 @@ def home(timeout=120):
     logger.info("Homing completed successfully")
     return True
 
-def check_idle():
-    """
-    Continuously check if the device is idle (synchronous version).
-    """
-    logger.info("Checking idle")
-    while True:
-        response = get_status_response()
-        if response and "Idle" in response:
-            logger.info("Device is idle")
-            # Schedule async update_machine_position in the existing event loop
-            try:
-                # Try to schedule in existing event loop if available
-                try:
-                    asyncio.get_running_loop()
-                    # Create a task but don't await it (fire and forget)
-                    asyncio.create_task(update_machine_position())
-                    logger.debug("Scheduled machine position update task")
-                except RuntimeError:
-                    # No event loop running, skip machine position update
-                    logger.debug("No event loop running, skipping machine position update")
-            except Exception as e:
-                logger.error(f"Error scheduling machine position update: {e}")
+def check_idle(timeout: float = 120.0):
+    """Bounded GRBL Idle check with fresh, transaction-locked status replies."""
+    deadline = time.monotonic() + max(0.1, float(timeout))
+    while time.monotonic() < deadline:
+        if getattr(state, 'stop_requested', False):
+            return False
+        response = get_status_response(timeout=min(3.0, max(0.1, deadline - time.monotonic())))
+        if response and response.startswith('<Idle|'):
             return True
-        time.sleep(1)
+        if response and response.startswith(('<Alarm|','<Hold|','<Door|')):
+            return False
+        time.sleep(0.15)
+    logger.error('Timed out waiting for controller Idle')
+    return False
+
 
 async def check_idle_async(timeout: float = 30.0):
     """
@@ -1425,29 +1528,22 @@ def is_machine_idle() -> bool:
 
 
 def get_machine_position(timeout=5):
+    """Return controller-reported MPos/WPos from a locked fresh status query.
+
+    Never consume a streaming G1 ACK from another thread; the status query
+    and its reply are owned by one connection transaction.
     """
-    Query the device for its position.
-    Supports both MPos and WPos formats (depends on GRBL $10 setting).
-    """
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            state.conn.send('?')
-            response = state.conn.readline()
-            logger.debug(f"Raw status response: {response}")
-            # Accept either MPos or WPos format
-            if "MPos" in response or "WPos" in response:
-                pos = parse_machine_position(response)
-                if pos:
-                    machine_x, machine_y = pos
-                    logger.debug(f"Machine position: X={machine_x}, Y={machine_y}")
-                    return machine_x, machine_y
-        except Exception as e:
-            logger.error(f"Error getting machine position: {e}")
-            return
-        time.sleep(0.1)
-    logger.warning("Timeout reached waiting for machine position")
+    deadline = time.monotonic() + max(0.05, float(timeout))
+    while time.monotonic() < deadline:
+        response = get_status_response(timeout=min(2.5, max(0.05, deadline-time.monotonic())))
+        if response:
+            coords = parse_machine_position(response)
+            if coords is not None:
+                return coords
+        time.sleep(0.05)
+    logger.warning('Timed out reading controller position')
     return None, None
+
 
 async def update_machine_position():
     if (state.conn.is_connected() if state.conn else False):

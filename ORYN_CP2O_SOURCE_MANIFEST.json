@@ -1,0 +1,31 @@
+{
+  "release": "CP2O-HOME-ACK-SAFETY-20261112",
+  "product": "ORYN Studio V2 \u2014 Designed to Move, by Studio Kinematics\u2122",
+  "sha256_lf": {
+    "ORYN_CP2M_POSITION_REFERENCE_RELEASE.md": "66a0a3ba5a543cacf8b2db9e72ba6dc393b5f48093abe9c1d6abc0bb35b1de39",
+    "ORYN_CP2N_POSITION_CONTINUITY_NEXT_UP_RELEASE.md": "49d438cc7da6d156270e37decd6e24e6453d4d667ad3408f93b49a388966ac72",
+    "ORYN_CP2O_HOME_ACK_POSITION_SAFETY_RELEASE.md": "7d649e91d205062756a27389518f3b7db889b9c2d24318485ec3434b17ca0381",
+    "frontend/v2-native/index.html": "926dd0b45d3718699cfb21d6a71a54b1b0b57f9fc33af6d08148ee0e414b31c9",
+    "frontend/v2-native/oryn-v2-live.js": "5dbbc3940d11059ab3f617cd2d23e101cc7bb1ee6efb9fe9fb3b07a45309f0e4",
+    "frontend/v2-native/oryn-v2.css": "ffac979b469195541008cf0ef722b3cd6f0173cc115d387ea5bb6e1a554727f2",
+    "main.py": "ce266f28a324f93dacbb1eb2f2853d69205b8e273fe1961adea508758c9b14c0",
+    "modules/connection/connection_manager.py": "1ebcff8bd60bc54b9c363f0e728da2fb8055ad06867d360029008690e0106579",
+    "modules/core/kinematics_contract.py": "ec260680e2d0e1bfefda604be73a6386a857a67248cd616d2b744b643210b181",
+    "modules/core/pattern_manager.py": "7dee0cae6dcabe3c29f462a52c24a790c563fd74dbc4a9e68abb8d5e4eae73a1",
+    "modules/core/state.py": "5debcf365a3d8410dbd35732e34ec5eba058b4bfc06ad1e20744e07d4bd7f7f5",
+    "modules/led/magic_home_controller.py": "02e9a45ca989b90c1e6172d6f6e41f9d898f6b954f10288904b4e7b11bb7eefb",
+    "scripts/verify_pi_v2_bundle.py": "929441320a010f1af96f2ffb11d25469255c80e5d624b2460f5f6e4acdbeb74b",
+    "scripts/verify_served_v2.py": "27442759c550a83f38b4e8b13c68d959159883d6f1445891d1dcc44d3f0981d1",
+    "static/dist/index.html": "926dd0b45d3718699cfb21d6a71a54b1b0b57f9fc33af6d08148ee0e414b31c9",
+    "static/dist/oryn-v2-live.js": "5dbbc3940d11059ab3f617cd2d23e101cc7bb1ee6efb9fe9fb3b07a45309f0e4",
+    "static/dist/oryn-v2.css": "ffac979b469195541008cf0ef722b3cd6f0173cc115d387ea5bb6e1a554727f2",
+    "tests/motion_contract/test_cp2e_reverse_overtravel.py": "04e363e1498f3d58897912fc7cae2ddb67a98d3987fa5c69fbde5204cff4058f",
+    "tests/motion_contract/test_cp2j_usb_firmware_wifi.py": "4c32d72acd22e0b11a1d6cf0dab268bbf8cdd7add963886f6d38a638f9826b07",
+    "tests/motion_contract/test_cp2l_calibration_sessions.py": "972ba10d9d9bfd207d45b6f71dd0053755f500214273ae4064edc65c14e4a3c6",
+    "tests/motion_contract/test_cp2m_position_reference.py": "8b55596e91969d789af2357289f0e236b736e8b4694db8deec1bd1454c76c963",
+    "tests/motion_contract/test_cp2n_queue_and_endpoint.py": "1cd1ffa73cc0fc4a60850fc9892cd614df04cc6465cf3d29f9ad10f95296b8c2",
+    "tests/motion_contract/test_cp2o_home_ack_and_status.py": "2cc5e3c444d013e99c2c12a48c43eb667d23bb63a56288e317ad4e27d892504f",
+    "tests/motion_contract/test_dune_parity.py": "63c4119efc21cd411c3b5dd2c6e993bf1ba61e6db2b88829c7475ee39589ca50",
+    "tests/motion_contract/test_magic_home_rgb.py": "3b5aaa3db2f5800625aa81a92d5c7435b11122a1de795197d871c193c68c496a"
+  }
+}

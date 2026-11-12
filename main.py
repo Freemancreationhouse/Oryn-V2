@@ -2445,9 +2445,10 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
                 detail=f"Universal calibration incomplete. Save {missing} calibration before running patterns or cleaning."
             )
 
-        if pattern_manager.get_pattern_lock().locked():
-            logger.info("Another pattern is running, stopping it first...")
-            await pattern_manager.stop_actions()
+        if pattern_manager.get_pattern_lock().locked() or state.current_playing_file:
+            # A second Play request must never cancel active motion silently.
+            # To schedule after the current pattern use the explicit Next Up API.
+            raise HTTPException(status_code=409, detail="A pattern is already running. Use Home > Add Next to queue it; STOP is never automatic.")
 
         # Clear any stale playlist state before starting a new single pattern.
         # This prevents a bug where loading state.json after server restart could
@@ -2477,6 +2478,67 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
     except Exception as e:
         logger.error(f'Failed to run theta-rho file {request.file_name}: {str(e)}')
         raise HTTPException(status_code=500, detail=str(e))
+
+class NextUpRequest(BaseModel):
+    file_name: str
+
+
+@app.post('/api/v2/queue/next', tags=['execution'])
+async def queue_next_pattern(request: NextUpRequest):
+    """Append a pattern to the *live* single-pass execution list.
+
+    No motion is sent from this endpoint.  The existing playlist executor runs
+    the next file only after the current file has fully completed and passed
+    its Idle/controller-coordinate endpoint check.
+    """
+    if not (state.conn and state.conn.is_connected()):
+        raise HTTPException(status_code=409, detail='Controller disconnected')
+    if not state.position_reference_verified or state.motion_position_uncertain:
+        raise HTTPException(status_code=409, detail='HOME reference unreliable; no new motion can be queued')
+    files = state.current_playlist
+    index = state.current_playlist_index
+    if (not isinstance(files, list) or not isinstance(index, int)
+            or not state.current_playing_file or not pattern_manager.get_pattern_lock().locked()
+            or state.playlist_mode not in (None, 'single')):
+        raise HTTPException(status_code=409, detail='Start a pattern first. Next Up is only available during a live single-pass execution.')
+    if len(files) - index - 1 >= 12:
+        raise HTTPException(status_code=409, detail='Next Up queue is full (12 patterns)')
+    name = normalize_file_path(request.file_name).strip()
+    if (not name or name.startswith('/') or '..' in name.split('/')
+            or '\x00' in name or not name.lower().endswith('.thr')):
+        raise HTTPException(status_code=400, detail='Choose a valid THR pattern from ORYN Gallery')
+    root = os.path.realpath(pattern_manager.THETA_RHO_DIR)
+    target = os.path.realpath(os.path.join(root, name))
+    if not target.startswith(root + os.sep) or not os.path.isfile(target):
+        raise HTTPException(status_code=404, detail='Pattern not found in the ORYN library')
+    # Keep the executor's existing relative library path representation.
+    if getattr(state, '_next_up_no_clean_start', None) is None:
+        # An additional queued pattern must not inherit a potentially surprising
+        # adaptive cleaning operation from the first pattern's run request.
+        state._next_up_no_clean_start = len(files)
+    files.append(os.path.join(pattern_manager.THETA_RHO_DIR, name))
+    logger.info('ORYN Next Up queued: %s (pending=%d)', name, len(files) - index - 1)
+    return {'success': True, 'pending': [os.path.basename(f) for f in files[index+1:]],
+            'note': 'No motor command issued; next pattern starts only after verified completion'}
+
+
+class RemoveNextUpRequest(BaseModel):
+    index: int
+
+
+@app.post('/api/v2/queue/remove', tags=['execution'])
+async def remove_next_pattern(request: RemoveNextUpRequest):
+    files = state.current_playlist
+    current = state.current_playlist_index
+    if (not isinstance(files, list) or not isinstance(current, int)
+            or not state.current_playing_file or not pattern_manager.get_pattern_lock().locked()
+            or request.index <= current or request.index >= len(files)):
+        raise HTTPException(status_code=409, detail='Queued item is unavailable or execution has moved on')
+    removed = files.pop(request.index)
+    logger.info('ORYN Next Up removed: %s', removed)
+    return {'success': True, 'removed': os.path.basename(removed),
+            'pending': [os.path.basename(f) for f in files[current+1:]]}
+
 
 @app.post("/stop_execution")
 async def stop_execution():
@@ -2592,19 +2654,26 @@ async def send_home():
             raise HTTPException(status_code=409, detail="Machine busy. Wait for current execution to stop before HOME")
 
         # HOME invalidates any former position reference until operator confirms the center.
+        # A previously failed pattern may leave stop_requested set. An explicit
+        # idle, user-initiated HOME is the only operation allowed to clear it.
         state.position_reference_verified = False
         state.is_homed = False
+        state.stop_requested = False
 
         # Set homing flag to block other movement operations
         state.is_homing = True
         logger.info("Homing started - blocking other movement operations")
 
         try:
-            # Run homing with 15 second timeout
+            # HOME is checked against controller ACK, travel and stable Idle;
+            # it must never report success after an early idle observation.
             success = await asyncio.to_thread(connection_manager.home)
             if not success:
-                logger.error("Homing failed or timed out")
-                raise HTTPException(status_code=500, detail="Homing failed or timed out after 15 seconds")
+                logger.error("Homing failed: %s", getattr(state, 'homing_error', None))
+                raise HTTPException(status_code=409, detail=(
+                    "HOME not verified by controller (" +
+                    str(getattr(state, 'homing_error', None) or 'motion incomplete') +
+                    "). Do not confirm center or start a pattern."))
 
             return {"success": True}
         finally:

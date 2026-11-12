@@ -1270,6 +1270,81 @@ def is_clear_pattern(file_path):
     return name.endswith('.thr') and name.startswith((
         'clear_from_out', 'clear_from_in', 'clear_sideway'))
 
+def _confirm_controller_endpoint(expected_xy, *, context: str, tolerance: float = 0.15, revoke: bool = True) -> bool:
+    """Check GRBL's reported controller-coordinate endpoint after a confirmed Idle.
+
+    The THR current position is updated when an individual G1 receives 'ok',
+    which only confirms *planner acceptance*.  Never infer that a motor has
+    physically reached the displayed THR point until the controller is Idle,
+    and its reported X/Y agree with the commanded coordinate frame.
+
+    This detects command-state desynchronization, not belt slips or missed
+    physical motor steps (which require an actual position sensor).
+    """
+    try:
+        ex, ey = (float(value) for value in expected_xy)
+        observed = (float(state.machine_x), float(state.machine_y))
+        import math
+        if not all(math.isfinite(v) for v in (ex, ey, *observed)):
+            raise ValueError('Non-finite controller coordinates')
+        err_x = abs(observed[0] - ex)
+        err_y = abs(observed[1] - ey)
+        if err_x <= tolerance and err_y <= tolerance:
+            logger.info('ORYN controller endpoint matched %s: Xerr %.4f Yerr %.4f', context, err_x, err_y)
+            state.last_position_check = 'passed'
+            return True
+        reason = (f'{context}: GRBL position mismatch dX={err_x:.3f} '
+                  f'dY={err_y:.3f} controller units')
+    except (ValueError, TypeError, OverflowError) as exc:
+        reason = f'{context}: GRBL endpoint unavailable or invalid ({exc})'
+    if not revoke:
+        # A GRBL 'Idle' response can be stale immediately after a planner ACK.
+        # Wait for another status/position confirmation before concluding drift.
+        return False
+    state.last_motion_error = 'controller_endpoint_mismatch'
+    state.last_position_check = reason
+    state.motion_position_uncertain = True
+    state.position_reference_verified = False
+    state.stop_requested = True
+    logger.error('ORYN refusing further movement; %s. HOME and verify before next pattern.', reason)
+    return False
+
+
+async def _await_confirmed_endpoint(expected_xy, *, context: str, timeout: float = 180.0) -> bool:
+    """Await two GRBL Idle/position observations, without resending ANY G-code.
+
+    A lone Idle immediately after a buffered G1's `ok` may be transient or
+    stale.  Both controller coordinates and stable Idle must agree before
+    declaring the machine ready for the next file/cleaning pass.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + max(1.0, float(timeout))
+    while loop.time() < deadline:
+        if (state.stop_requested or not state.position_reference_verified
+                or not state.conn or not state.conn.is_connected()):
+            break
+        remaining = deadline - loop.time()
+        idle = await connection_manager.check_idle_async(timeout=min(8.0, max(0.2, remaining)))
+        if idle and _confirm_controller_endpoint(expected_xy, context=context, revoke=False):
+            # Demand a second fresh observation: no status-only 'Idle' shortcut.
+            await asyncio.sleep(0.2)
+            idle_again = await connection_manager.check_idle_async(timeout=min(4.0, max(0.2, deadline-loop.time())))
+            if idle_again and _confirm_controller_endpoint(expected_xy, context=context, revoke=False):
+                state.last_position_check = 'passed'
+                logger.info('ORYN %s confirmed by two stable GRBL Idle + position observations', context)
+                return True
+        await asyncio.sleep(0.15)
+    _confirm_controller_endpoint(expected_xy, context=context)
+    # Even a matching position cannot establish completion without confirmed Idle.
+    state.motion_position_uncertain = True
+    state.position_reference_verified = False
+    state.stop_requested = True
+    state.last_motion_error = getattr(state, 'last_motion_error', None) or 'endpoint_idle_unconfirmed'
+    state.last_position_check = f'{context}: controller Idle/position not confirmed (HOME required)'
+    logger.error('ORYN %s unconfirmed; no next pattern is allowed', context)
+    return False
+
+
 async def _execute_pattern_internal(file_path):
     """Internal function to execute a pattern file. Must be called with lock already held.
 
@@ -1522,7 +1597,11 @@ async def _execute_pattern_internal(file_path):
             # move to actually finish before preview/progress begins. Subsequent
             # points are planner-buffered for smooth motion.
             if i == 0:
-                await connection_manager.check_idle_async()
+                expected_entry = (state.machine_x, state.machine_y)
+                entry_confirmed = await _await_confirmed_endpoint(expected_entry, context='pattern entry')
+                if not entry_confirmed:
+                    logger.error('Pattern entry did not reach a confirmed controller endpoint; drawing blocked')
+                    break
 
             # Update progress for all coordinates including the first one
             pbar.update(1)
@@ -1568,8 +1647,24 @@ async def _execute_pattern_internal(file_path):
     # Give WebSocket a chance to send the final update
     await asyncio.sleep(0.1)
 
-    # Log execution time (only for completed patterns, not stopped/skipped)
+    # A waypoint ACK is not physical completion; the final controller Idle and
+    # matching endpoint below determine whether this was truly completed.
     was_completed = not state.stop_requested and not state.skip_requested
+
+    if not state.conn:
+        logger.error("Device is not connected. Stopping pattern execution.")
+        return False
+
+    expected_finish = (state.machine_x, state.machine_y)
+    endpoint_confirmed = (was_completed and await _await_confirmed_endpoint(
+        expected_finish, context='pattern finish'))
+    if not endpoint_confirmed:
+        state.motion_position_uncertain = True
+        state.position_reference_verified = False
+        logger.error('ORYN completed/stopped without reliable position continuity. HOME required.')
+        was_completed = False
+    else:
+        state.save()  # Last commanded theta/rho persists for diagnostics, never as physical HOME proof.
     pattern_name = os.path.basename(file_path)
     effective_speed = state.clear_pattern_speed if (is_clear_file and state.clear_pattern_speed is not None) else state.speed
     log_execution_time(
@@ -1578,21 +1673,8 @@ async def _execute_pattern_internal(file_path):
         speed=effective_speed,
         actual_time=actual_execution_time,
         total_coordinates=total_coordinates,
-        was_completed=was_completed
+        was_completed=was_completed,
     )
-
-    if not state.conn:
-        logger.error("Device is not connected. Stopping pattern execution.")
-        return False
-
-    idle_confirmed = await connection_manager.check_idle_async(timeout=180)
-    if not idle_confirmed or not was_completed:
-        state.motion_position_uncertain = True
-        state.position_reference_verified = False
-        logger.error('ORYN completed/stopped without reliable position continuity. HOME required.')
-        was_completed = False
-    else:
-        state.save()  # Last commanded theta/rho persists for diagnostics, never as physical HOME proof.
     await asyncio.to_thread(motion_controller._restore_absolute_mode_sync)
 
     # Pattern-local universal origin must never leak into the next pattern.
@@ -1664,8 +1746,12 @@ async def run_theta_rho_file(file_path, is_playlist=False, clear_pattern=None, c
                 state.execution_progress = None
             return
 
-        # Run the main pattern
-        await _execute_pattern_internal(file_path)
+        # Run the main pattern.  Do not advance a sequence after failed motion.
+        pattern_completed = await _execute_pattern_internal(file_path)
+        if not pattern_completed:
+            state.stop_requested = True
+            state.motion_position_uncertain = True
+            state.position_reference_verified = False
 
         # Only clear state if not part of a playlist
         if not is_playlist:
@@ -1681,8 +1767,12 @@ async def run_theta_rho_file(file_path, is_playlist=False, clear_pattern=None, c
                     pass
                 progress_update_task = None
         else:
-            logger.info("Pattern execution completed, maintaining state for playlist")
-            
+            if pattern_completed:
+                logger.info("Pattern verified complete, maintaining state for playlist")
+            else:
+                logger.error("Pattern FAILED (controller continuity unverified); playlist must stop")
+        return pattern_completed
+
 
 async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_mode="single", shuffle=False):
     """Run multiple .thr files in sequence with options.
@@ -1751,12 +1841,17 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                 state.original_pause_time = None
 
                 # Execute the pattern with optional clear pattern
-                await run_theta_rho_file(
+                queued_start = getattr(state, '_next_up_no_clean_start', None)
+                pending_extra = isinstance(queued_start, int) and idx >= queued_start
+                completed = await run_theta_rho_file(
                     file_path,
                     is_playlist=True,
-                    clear_pattern=clear_pattern,
+                    clear_pattern=None if pending_extra else clear_pattern,
                     cache_data=cache_data
                 )
+                if not completed:
+                    logger.error('ORYN halted sequence after an unverified pattern or cleaning move')
+                    return
 
                 # Increment pattern counter (auto-home check happens after pause time)
                 state.patterns_since_last_home += 1
@@ -1842,16 +1937,38 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
                     state.patterns_since_last_home >= state.auto_home_after_patterns and
                     state.current_playlist and idx < len(state.current_playlist) - 1 and
                     not state.stop_requested):
-                    logger.info(f"Auto-homing triggered after {state.patterns_since_last_home} patterns (before next clear pattern)")
-                    try:
-                        success = await asyncio.to_thread(connection_manager.home)
-                        if success:
-                            logger.info("Auto-homing completed successfully")
-                            state.patterns_since_last_home = 0
-                        else:
-                            logger.warning("Auto-homing failed, continuing with playlist")
-                    except Exception as e:
-                        logger.error(f"Error during auto-homing: {e}")
+                    # Sensorless HOME cannot establish physical center without
+                    # an operator. Never issue a blind crash jog inside a playlist.
+                    if getattr(state, 'homing', 0) == 0:
+                        logger.warning('ORYN automatic sensorless HOME suppressed; '
+                                       'continuing only with the already-verified position reference')
+                        if (not getattr(state, 'position_reference_verified', False)
+                                or getattr(state, 'motion_position_uncertain', False)):
+                            state.stop_requested = True
+                            logger.error('Lost position reference: sequence stopped before next pattern')
+                            return
+                    else:
+                        logger.info('Auto HOME requested for sensor-equipped controller')
+                        try:
+                            success = await asyncio.to_thread(connection_manager.home)
+                            if not success:
+                                state.stop_requested = True
+                                state.motion_position_uncertain = True
+                                state.position_reference_verified = False
+                                logger.error('Auto HOME failed: sequence stopped, not continued')
+                                return
+                            # Even a sensor-based HOME must not silently restore
+                            # the operator-verified reference in CP2M/CP2N.
+                            state.stop_requested = True
+                            state.position_reference_verified = False
+                            logger.warning('Auto HOME finished; operator reference confirmation needed before continuing')
+                            return
+                        except Exception as e:
+                            state.stop_requested = True
+                            state.motion_position_uncertain = True
+                            state.position_reference_verified = False
+                            logger.error('Auto HOME error: %s; sequence halted', e)
+                            return
 
                 state.skip_requested = False
                 idx += 1
@@ -1933,6 +2050,7 @@ async def run_theta_rho_files(file_paths, pause_time=0, clear_pattern=None, run_
             state.current_playlist = None
             state.current_playlist_index = None
             state.playlist_mode = None
+            state._next_up_no_clean_start = None
             state.pause_time_remaining = 0
 
             # Persist cleared state so server restart won't load stale playlist
@@ -2161,6 +2279,8 @@ def get_status():
         "physical_home_verified": bool(getattr(state, "position_reference_verified", False)),
         "position_uncertain": bool(getattr(state, "motion_position_uncertain", False)),
         "position_type": "controller-commanded estimate (no physical encoder)",
+        "last_position_check": getattr(state, "last_position_check", "not checked"),
+        "last_motion_error": getattr(state, "last_motion_error", None),
         "table_type": state.table_type_override or state.table_type,
         "rho_calibrated": bool(getattr(state, 'rho_calibrated', False)),
         "rho_travel_units": getattr(state, 'rho_travel_units', None),

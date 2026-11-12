@@ -130,5 +130,5 @@ def test_approved_v2_native_wifi_visible_in_system_without_legacy_iframe():
     assert '/api/wifi/networks' in js and '/api/wifi/connect' in js
     assert 'Wi-Fi & ORYN hotspot' in js
     assert 'iframe' not in js.lower()
-    assert any(tag in js for tag in ('ORYN V2 · CP2J','ORYN V2 · CP2K','ORYN V2 · CP2L','ORYN V2 · CP2M'))
+    assert any(tag in js for tag in ('ORYN V2 · CP2J','ORYN V2 · CP2K','ORYN V2 · CP2L','ORYN V2 · CP2M','ORYN V2 · CP2N'))
     assert 'ORIGINAL DUNE' not in js.upper()

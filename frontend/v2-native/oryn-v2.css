@@ -95,3 +95,17 @@ html,body{margin:0;min-height:100%;background:#101c24;color:#e8e1d6;font-family:
 .oryn-v2-calcard .oryn-v2-jog button:not(:disabled){border-color:#bd9674;background:#3e525a;color:#ffe6be;font-weight:700}
 .oryn-v2-calcard .oryn-v2-jog button:disabled{opacity:.45}
 .oryn-v2-calcard .oryn-v2-actionbar button:disabled{opacity:.4;cursor:not-allowed}
+
+/* CP2N - actual queue preview on right side of Home, retaining approved V2 style */
+.oryn-v2-next-panel{align-self:start;display:grid;gap:10px}.oryn-v2-next-title{margin:1px 0 0;font-size:19px;color:#f0dfc9}
+.oryn-v2-next-preview{width:100%;max-height:190px;aspect-ratio:1.5;display:grid;place-items:center;border:1px solid #49616b;border-radius:12px;background:#172a32;overflow:hidden}
+.oryn-v2-next-preview img{width:100%;height:100%;object-fit:contain}.oryn-v2-next-preview span{color:#a6bbc3;text-align:center;font-size:12px}.oryn-v2-next-preview small{display:block;margin-top:8px;font-size:10px;overflow-wrap:anywhere}
+.oryn-v2-next-empty{padding:20px;text-align:center;font-size:11px;color:#8eabb5}.oryn-v2-next-panel .oryn-v2-actionbar{margin:3px 0 7px}
+.oryn-v2-next-item{display:grid;grid-template-columns:48px minmax(0,1fr) 30px;gap:9px;align-items:center;padding:9px;background:#1b3038;border:1px solid #41545e;border-radius:9px}
+.oryn-v2-next-item>div:nth-child(2){min-width:0}.oryn-v2-next-item small{display:block;color:#e4b98b;font-size:9px;letter-spacing:.1em}.oryn-v2-next-item strong{display:block;font-size:11px;overflow-wrap:anywhere;margin-top:4px}
+.oryn-v2-next-thumb{width:48px;height:45px;display:grid;place-items:center;background:#13242c;border-radius:7px;color:#cd9877}.oryn-v2-next-thumb img{width:100%;height:100%;object-fit:contain}
+.oryn-v2-next-item button{border:1px solid #596d73;border-radius:7px;background:#30434c;color:#f2d0bc;font-size:16px;cursor:pointer}
+.oryn-v2-queue-state{font-size:11px;font-weight:700;color:#bde1d0;line-height:1.4}.oryn-v2-next-list{display:grid;gap:7px;max-height:290px;overflow:auto}
+@media(max-width:720px){.oryn-v2-stack{grid-template-columns:minmax(0,1fr)}.oryn-v2-next-panel{order:0}}
+
+.oryn-v2-next-preview .oryn-v2-viz{width:100%;height:100%;max-height:185px;aspect-ratio:auto}.oryn-v2-next-thumb .oryn-v2-viz{height:100%;width:100%;max-height:45px;aspect-ratio:auto}
