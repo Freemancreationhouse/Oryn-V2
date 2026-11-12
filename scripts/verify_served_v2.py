@@ -4,7 +4,7 @@ from pathlib import Path
 from urllib.request import Request,urlopen
 import hashlib,sys
 ROOT=Path(__file__).resolve().parents[1]
-VERSION='CP2L-CALIBRATION-20261110'
+VERSION='CP2M-REFERENCE-20261111'
 base=(sys.argv[1] if len(sys.argv)>1 else 'http://127.0.0.1').rstrip('/')
 checks={'index.html':'/','oryn-v2-live.js':'/oryn-v2-live.js?v='+VERSION,'oryn-v2.css':'/oryn-v2.css?v='+VERSION}
 failures=[]
@@ -23,7 +23,7 @@ for name,url in checks.items():
     if name=='oryn-v2-live.js':
         if VERSION.encode() not in received:failures.append('Old JavaScript version detected')
         if b'<iframe' in received or b'Complete controls' in received:failures.append('Embedded old UI detected')
-        for marker in [b'function calCard(axis)',b'calFeedback',b'calibration_single_attempt',b'function calibrationGuide()']:
+        for marker in [b'function calCard(axis)',b'calFeedback',b'calibration_single_attempt',b'function calibrationGuide()',b'confirm-home',b'move-perimeter',b'CP2M-REFERENCE-20261111']:
             if marker==b'calibration_single_attempt':continue # Server-side invariant, not part of frontend.
             if marker not in received:failures.append('Missing calibration control: '+marker.decode())
     print('[PASS] Served matches installed source:',name)

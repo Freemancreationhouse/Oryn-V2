@@ -159,6 +159,32 @@ def check_homing_in_progress():
     if state.is_homing:
         raise HTTPException(status_code=409, detail="Cannot perform this action while homing is in progress")
 
+def require_referenced_motion(*, full_radius=False):
+    """Allow controlled moves only with a CURRENT-session, operator-verified HOME.
+
+    Saved theta/rho and GRBL MPos are estimates, never a home sensor. Reset,
+    reconnect, a stopped pattern, or an uncertain ACK invalidates this trust.
+    The ORYN kinematic transform and configured 10:1 ratio are untouched.
+    """
+    if not (state.conn and state.conn.is_connected()):
+        raise HTTPException(status_code=409, detail="Controller disconnected. Connect and HOME before movement.")
+    if state.is_homing or state.current_playing_file or pattern_manager.get_pattern_lock().locked():
+        raise HTTPException(status_code=409, detail="Controller busy. Stop/wait for Idle before positioning.")
+    if not bool(getattr(state, 'position_reference_verified', False)):
+        raise HTTPException(status_code=409, detail="HOME not confirmed in this controller session. Run HOME, observe the true center, then press Confirm physical center in Motion.")
+    if bool(getattr(state, 'motion_position_uncertain', False)):
+        raise HTTPException(status_code=409, detail="Controller position uncertain after an interrupted/unacknowledged movement. HOME again.")
+    if full_radius and not (bool(state.theta_calibrated and state.theta_revolution_units) and
+                            bool(state.rho_calibrated and state.rho_travel_units)):
+        raise HTTPException(status_code=409, detail="Both 360-degree and radial travel calibrations must be saved before moving to the perimeter.")
+    try:
+        rho = float(state.current_rho)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=409, detail="Reported radius invalid. HOME again.")
+    if not 0 <= rho <= 1.000001:
+        raise HTTPException(status_code=409, detail="Reported radius is outside the safe calibrated range. HOME again.")
+
+
 
 def normalize_file_path(file_path: str) -> str:
     """Normalize file path separators for consistent cross-platform handling."""
@@ -1827,6 +1853,9 @@ async def connect(request: ConnectRequest):
 @app.post("/disconnect")
 async def disconnect():
     try:
+        state.position_reference_verified = False
+        state.is_homed = False
+        state.last_homing_success = None
         state.conn.close()
         logger.info('Successfully disconnected from serial port')
         return {"success": True}
@@ -2399,9 +2428,8 @@ async def run_theta_rho(request: ThetaRhoRequest, background_tasks: BackgroundTa
 
         check_homing_in_progress()
 
-        if getattr(state, 'motion_position_uncertain', False):
-            raise HTTPException(status_code=409,
-                detail="A controller movement was not acknowledged. Rehome ORYN before running another pattern or cleaning.")
+        require_referenced_motion(full_radius=True)
+
 
         # UNIVERSAL GEOMETRY SAFETY GATE:
         # Once either physical calibration has been taught, never allow a
@@ -2455,7 +2483,11 @@ async def stop_execution():
     if not (state.conn.is_connected() if state.conn else False):
         logger.warning("Attempted to stop without a connection")
         raise HTTPException(status_code=400, detail="Connection not established")
+    had_motion = bool(state.current_playing_file or pattern_manager.get_pattern_lock().locked())
     success = await pattern_manager.stop_actions()
+    if had_motion:
+        state.motion_position_uncertain = True
+        state.position_reference_verified = False
     if not success:
         raise HTTPException(status_code=500, detail="Stop timed out - use force_stop")
     return {"success": True}
@@ -2465,6 +2497,9 @@ async def force_stop():
     """Force stop all pattern execution and clear all state. Use when normal stop doesn't work."""
     logger.info("Force stop requested - clearing all pattern state")
 
+    # An emergency stop always requires a new HOME reference.
+    state.position_reference_verified = False
+    state.motion_position_uncertain = True
     # Set stop flag first
     state.stop_requested = True
     state.pause_requested = False
@@ -2511,8 +2546,11 @@ async def soft_reset():
 
         # Use the shared soft reset function
         await connection_manager.perform_soft_reset()
+        state.position_reference_verified = False
+        state.is_homed = False
+        state.motion_position_uncertain = True
 
-        return {"success": True, "message": "Soft reset sent. Position reset to 0."}
+        return {"success": True, "message": "Controller reset. HOME required: zero coordinates do not indicate physical center."}
     except Exception as e:
         logger.error(f"Error sending soft reset: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -2535,6 +2573,8 @@ async def controller_restart():
 
         # Mark as needing homing since position is now unknown
         state.is_homed = False
+        state.position_reference_verified = False
+        state.motion_position_uncertain = True
 
         return {"success": True, "message": "Controller restart command sent. Homing required."}
     except Exception as e:
@@ -2548,8 +2588,12 @@ async def send_home():
             logger.warning("Attempted to move to home without a connection")
             raise HTTPException(status_code=400, detail="Connection not established")
 
-        if state.is_homing:
-            raise HTTPException(status_code=409, detail="Homing already in progress")
+        if state.is_homing or state.current_playing_file or pattern_manager.get_pattern_lock().locked():
+            raise HTTPException(status_code=409, detail="Machine busy. Wait for current execution to stop before HOME")
+
+        # HOME invalidates any former position reference until operator confirms the center.
+        state.position_reference_verified = False
+        state.is_homed = False
 
         # Set homing flag to block other movement operations
         state.is_homing = True
@@ -2655,6 +2699,7 @@ async def run_specific_theta_rho_file(file_name: str):
         raise HTTPException(status_code=400, detail="Connection not established")
 
     check_homing_in_progress()
+    require_referenced_motion(full_radius=True)
 
     pattern_manager.run_theta_rho_file(file_path)
     return {"success": True}
@@ -2924,6 +2969,51 @@ async def cancel_perimeter_calibration():
     state.perimeter_calibration_active=False; state.perimeter_calibration_start_y=None; state.perimeter_calibration_current_units=0.0
     return {"success":True}
 
+class PhysicalHomeConfirmation(BaseModel):
+    confirmed_center: bool = False
+
+
+@app.post("/api/motion/confirm-home", tags=["machine-calibration"])
+async def confirm_physical_home(request: PhysicalHomeConfirmation):
+    """Operator attests that the last explicit HOME physically reached center.
+
+    This endpoint sends NO motion commands, resets, offsets, or unlock commands.
+    It is deliberately session-only: reconnect and restart revoke the reference.
+    """
+    if request.confirmed_center is not True:
+        raise HTTPException(status_code=400, detail="Confirm that the carriage is physically at the true center before accepting HOME.")
+    if not (state.conn and state.conn.is_connected()):
+        raise HTTPException(status_code=409, detail="Controller not connected")
+    if state.is_homing or state.current_playing_file or pattern_manager.get_pattern_lock().locked():
+        raise HTTPException(status_code=409, detail="A movement is still active; cannot confirm HOME")
+    if getattr(state, 'last_homing_success', None) is not True:
+        raise HTTPException(status_code=409, detail="Run an explicit successful HOME this session before confirming the physical center")
+    if getattr(state, 'motion_position_uncertain', False):
+        raise HTTPException(status_code=409, detail="Controller position uncertain. Run HOME again")
+    if abs(float(state.current_rho)) > 0.02:
+        raise HTTPException(status_code=409, detail="HOME did not leave logical radius at center")
+    idle = await connection_manager.check_idle_async(timeout=8)
+    if not idle:
+        raise HTTPException(status_code=409, detail="GRBL has not confirmed Idle; do not claim a verified HOME")
+    state.position_reference_verified = True
+    state.is_homed = True
+    state.save()  # Save estimated coordinates; reference trust itself is runtime-only.
+    logger.info("ORYN physical center visually confirmed by operator for current connection session")
+    return {"success": True, "physical_home_verified": True,
+            "current_theta": state.current_theta, "current_rho": state.current_rho,
+            "note": "Commanded position only; no physical position sensor fitted"}
+
+
+@app.get("/api/motion/reference-status", tags=["machine-calibration"])
+async def reference_status():
+    return {"connected": bool(state.conn and state.conn.is_connected()),
+            "home_reported_success": getattr(state, 'last_homing_success', None),
+            "physical_home_verified": bool(getattr(state, 'position_reference_verified', False)),
+            "position_uncertain": bool(getattr(state, 'motion_position_uncertain', False)),
+            "current_theta": state.current_theta, "current_rho": state.current_rho,
+            "measured_physical_position": False}
+
+
 @app.post("/move_to_center")
 async def move_to_center():
     try:
@@ -2932,20 +3022,19 @@ async def move_to_center():
             raise HTTPException(status_code=400, detail="Connection not established")
 
         check_homing_in_progress()
-
-        # Clear stop_requested to ensure manual move works after pattern stop
+        require_referenced_motion()
         state.stop_requested = False
 
-        logger.info("Moving device to center position")
-        await pattern_manager.reset_theta()
-        await pattern_manager.move_polar(0, 0)
-
-        # Wait for machine to reach idle before returning
-        idle = await connection_manager.check_idle_async(timeout=60)
+        # Move only rho. Never reset theta, zero GRBL coordinates, or unwind turns.
+        logger.info("ORYN move to center from current commanded rho=%s", state.current_rho)
+        await pattern_manager.move_polar(float(state.current_theta), 0.0, speed=min(float(state.speed), 60.0))
+        idle = await connection_manager.check_idle_async(timeout=180)
         if not idle:
-            logger.warning("Machine did not reach idle after move to center")
-
-        return {"success": True}
+            state.motion_position_uncertain = True
+            state.position_reference_verified = False
+            raise HTTPException(status_code=409, detail="Center move did not confirm Idle. HOME again before executing.")
+        state.save()
+        return {"success": True, "current_rho": state.current_rho, "current_theta": state.current_theta, "position_type": "commanded"}
     except HTTPException:
         raise
     except Exception as e:
@@ -2960,20 +3049,19 @@ async def move_to_perimeter():
             raise HTTPException(status_code=400, detail="Connection not established")
 
         check_homing_in_progress()
-
-        # Clear stop_requested to ensure manual move works after pattern stop
+        require_referenced_motion(full_radius=True)
         state.stop_requested = False
 
-        logger.info("Moving device to perimeter position")
-        await pattern_manager.reset_theta()
-        await pattern_manager.move_polar(0, 1)
-
-        # Wait for machine to reach idle before returning
-        idle = await connection_manager.check_idle_async(timeout=60)
+        # Keep theta unchanged and traverse only the saved, calibrated radial extent.
+        logger.info("ORYN move to safe perimeter from commanded rho=%s", state.current_rho)
+        await pattern_manager.move_polar(float(state.current_theta), 1.0, speed=min(float(state.speed), 60.0))
+        idle = await connection_manager.check_idle_async(timeout=180)
         if not idle:
-            logger.warning("Machine did not reach idle after move to perimeter")
-
-        return {"success": True}
+            state.motion_position_uncertain = True
+            state.position_reference_verified = False
+            raise HTTPException(status_code=409, detail="Perimeter move did not confirm Idle. HOME again before executing.")
+        state.save()
+        return {"success": True, "current_rho": state.current_rho, "current_theta": state.current_theta, "position_type": "commanded"}
     except HTTPException:
         raise
     except Exception as e:
@@ -3185,6 +3273,9 @@ async def serial_status():
         "firmware_type": getattr(state, 'firmware_type', None),
         "firmware_version": getattr(state, 'firmware_version', None),
         "physical_home_verified": bool(getattr(state, 'position_reference_verified', False)),
+        "position_uncertain": bool(getattr(state, 'motion_position_uncertain', False)),
+        "current_theta": state.current_theta,
+        "current_rho": state.current_rho,
         "home_reported_success": getattr(state, 'last_homing_success', None),
     }
 
@@ -3320,6 +3411,7 @@ async def run_playlist_endpoint(request: PlaylistRequest):
             raise HTTPException(status_code=400, detail="Connection not established")
 
         check_homing_in_progress()
+        require_referenced_motion(full_radius=True)
 
         if not os.path.exists(playlist_manager.PLAYLISTS_FILE):
             raise HTTPException(status_code=404, detail=f"Playlist '{request.playlist_name}' not found")

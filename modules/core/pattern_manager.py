@@ -1279,6 +1279,12 @@ async def _execute_pattern_internal(file_path):
     Returns:
         True if pattern completed successfully, False if stopped/skipped
     """
+    if (not bool(getattr(state, 'position_reference_verified', False)) or
+            bool(getattr(state, 'motion_position_uncertain', False))):
+        logger.error('ORYN refused pattern: physical center has not been confirmed this session')
+        state.stop_requested = True
+        return False
+
     # Run file parsing in thread to avoid blocking the event loop
     coordinates = await asyncio.to_thread(parse_theta_rho_file, file_path)
     total_coordinates = len(coordinates)
@@ -1351,7 +1357,8 @@ async def _execute_pattern_internal(file_path):
 
     logger.info(f"Starting pattern execution: {file_path}")
     logger.info(f"t: {state.current_theta}, r: {state.current_rho}")
-    await reset_theta()
+    # Only normalize logical angle. Never reset a controller between patterns.
+    state.current_theta = float(state.current_theta) % (2.0 * pi)
 
     if (getattr(state, 'theta_calibrated', False) and getattr(state, 'theta_revolution_units', None)
             and getattr(state, 'rho_calibrated', False) and getattr(state, 'rho_travel_units', None)):
@@ -1578,7 +1585,14 @@ async def _execute_pattern_internal(file_path):
         logger.error("Device is not connected. Stopping pattern execution.")
         return False
 
-    await connection_manager.check_idle_async()
+    idle_confirmed = await connection_manager.check_idle_async(timeout=180)
+    if not idle_confirmed or not was_completed:
+        state.motion_position_uncertain = True
+        state.position_reference_verified = False
+        logger.error('ORYN completed/stopped without reliable position continuity. HOME required.')
+        was_completed = False
+    else:
+        state.save()  # Last commanded theta/rho persists for diagnostics, never as physical HOME proof.
     await asyncio.to_thread(motion_controller._restore_absolute_mode_sync)
 
     # Pattern-local universal origin must never leak into the next pattern.
@@ -2145,6 +2159,8 @@ def get_status():
         "firmware_version": state.firmware_version,
         "firmware_type": getattr(state, "firmware_type", None),
         "physical_home_verified": bool(getattr(state, "position_reference_verified", False)),
+        "position_uncertain": bool(getattr(state, "motion_position_uncertain", False)),
+        "position_type": "controller-commanded estimate (no physical encoder)",
         "table_type": state.table_type_override or state.table_type,
         "rho_calibrated": bool(getattr(state, 'rho_calibrated', False)),
         "rho_travel_units": getattr(state, 'rho_travel_units', None),

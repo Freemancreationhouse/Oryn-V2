@@ -1,0 +1,26 @@
+{
+  "release": "CP2M-REFERENCE-20261111",
+  "product": "ORYN Studio V2",
+  "sha256_lf": {
+    "main.py": "cd3388132bd90885b2c71a8f3b7722eef1c5b305a61c91dcdc6f16e417915a77",
+    "modules/connection/connection_manager.py": "b34350433e989f7f4a6dc3d2cf65b29b030490fd439c84be4eb429f3edc61c1e",
+    "modules/core/pattern_manager.py": "06bda43cecdfa201c99ce37c5d9b9613bd6acbd40390b74293e3c8ceac8d9a23",
+    "modules/core/kinematics_contract.py": "ec260680e2d0e1bfefda604be73a6386a857a67248cd616d2b744b643210b181",
+    "modules/core/state.py": "5debcf365a3d8410dbd35732e34ec5eba058b4bfc06ad1e20744e07d4bd7f7f5",
+    "modules/led/magic_home_controller.py": "02e9a45ca989b90c1e6172d6f6e41f9d898f6b954f10288904b4e7b11bb7eefb",
+    "frontend/v2-native/index.html": "582d4a5f0dc28af46eb49ca29aafe022a39d8d184ce1a635af7bb8c6439a1402",
+    "frontend/v2-native/oryn-v2-live.js": "b36c9a8163a29e2e669548287480e7b530cab13a373d7962f32e264d38e14e2f",
+    "frontend/v2-native/oryn-v2.css": "aa5c218f24b75c05ed7f27ad234adea7009a7fa1322c1c228d010b48f2e4edf7",
+    "static/dist/index.html": "582d4a5f0dc28af46eb49ca29aafe022a39d8d184ce1a635af7bb8c6439a1402",
+    "static/dist/oryn-v2-live.js": "b36c9a8163a29e2e669548287480e7b530cab13a373d7962f32e264d38e14e2f",
+    "static/dist/oryn-v2.css": "aa5c218f24b75c05ed7f27ad234adea7009a7fa1322c1c228d010b48f2e4edf7",
+    "scripts/verify_served_v2.py": "95a30809eac2f2591d8c5c62449c96721fae884f7837dad3df259d7d414b917d",
+    "tests/motion_contract/test_cp2m_position_reference.py": "28ae41d037349c3a370437755a494b06bf486eb73c8a2bc36410178b1dcc3f62",
+    "tests/motion_contract/test_cp2l_calibration_sessions.py": "972ba10d9d9bfd207d45b6f71dd0053755f500214273ae4064edc65c14e4a3c6",
+    "tests/motion_contract/test_cp2j_usb_firmware_wifi.py": "253452e2f72959f37f4774961b73dc9249d1140ad6dca1204648daa7b25f54eb",
+    "tests/motion_contract/test_dune_parity.py": "63c4119efc21cd411c3b5dd2c6e993bf1ba61e6db2b88829c7475ee39589ca50",
+    "tests/motion_contract/test_cp2e_reverse_overtravel.py": "04e363e1498f3d58897912fc7cae2ddb67a98d3987fa5c69fbde5204cff4058f",
+    "tests/motion_contract/test_magic_home_rgb.py": "3b5aaa3db2f5800625aa81a92d5c7435b11122a1de795197d871c193c68c496a",
+    "ORYN_CP2M_POSITION_REFERENCE_RELEASE.md": "66a0a3ba5a543cacf8b2db9e72ba6dc393b5f48093abe9c1d6abc0bb35b1de39"
+  }
+}

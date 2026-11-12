@@ -1025,6 +1025,8 @@ def home(timeout=120):
     # Track the outcome explicitly so the UI never reports a failed HOME as complete.
     state.last_homing_success = None
     state.homing_error = None
+    state.position_reference_verified = False
+    state.is_homed = False
 
     # Check for alarm state before homing and unlock if needed
     if not check_and_unlock_alarm():
